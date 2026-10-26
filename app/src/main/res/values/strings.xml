@@ -1,62 +1,10 @@
 <resources>
     <string name="app_name">R A . i O</string>
-    <string name="app_display_title">R A . i O</string>
-    <string name="app_subtitle">Floating overlay AI study assistant</string>
-    <string name="accessibility_service_description">R A . i O uses accessibility services to analyze on-screen study questions and help fill confirmed answers.</string>
-    
-    <!-- Navigation & Tabs -->
-    <string name="nav_home">Home</string>
-    <string name="nav_settings">Settings</string>
-    <string name="nav_history">History</string>
-    <string name="nav_help">Help</string>
-
-    <!-- Modes -->
-    <string name="mode_library_title">Mode Library</string>
-    <string name="mode_library_desc">Answer without AI, no internet required. Fast and free offline rules.</string>
-    <string name="mode_offline_title">Mode AI Offline</string>
-    <string name="mode_offline_desc">On-device local LLM. Download once, use forever without quota.</string>
-    <string name="mode_cloud_title">Mode AI Open Key</string>
-    <string name="mode_cloud_desc">Bring your own API key. Select OpenAI, Gemini, Claude, Groq, DeepSeek, etc.</string>
-
-    <!-- Home Actions -->
+    <string name="home_title">R A . i O</string>
+    <string name="home_subtitle">Floating study assistant overlay</string>
     <string name="start_robot">🚀 START ROBOT</string>
     <string name="stop_robot">⏸ STOP ROBOT</string>
-    <string name="active_mode_label">Active Mode</string>
-    <string name="robot_status_label">Robot Status</string>
-    <string name="robot_running">Active &amp; Floating</string>
-    <string name="robot_stopped">Idle</string>
-    <string name="quota_today">Daily AI Quota: %1$d / %2$d</string>
-
-    <!-- Overlay Bubble & Menu -->
-    <string name="overlay_analyze_screen">🔍 Analyze Screen</string>
-    <string name="overlay_auto_answer">⚡ Auto Answer</string>
-    <string name="overlay_ocr_read">📸 Visual OCR Read</string>
-    <string name="overlay_history">📜 View History</string>
-    <string name="overlay_settings">⚙️ Settings</string>
-    <string name="overlay_hide">👁 Hide Bubble</string>
-    <string name="overlay_stop">❌ Turn Off Robot</string>
-
-    <!-- Statuses -->
-    <string name="status_ready">Ready to analyze</string>
-    <string name="status_analyzing">🔍 Analyzing screen...</string>
-    <string name="status_answering">⚡ Generating answer...</string>
-    <string name="status_ready_answer">✅ Answer ready</string>
-    <string name="status_filled">✅ Answer filled into app</string>
-    <string name="status_failed">❌ Failed: %1$s</string>
-
-    <!-- Dialogs & Buttons -->
-    <string name="btn_confirm">Confirm</string>
-    <string name="btn_cancel">Cancel</string>
-    <string name="btn_save">Save</string>
-    <string name="btn_fill">Fill Answer</string>
-    <string name="btn_edit">Edit Answer</string>
-    <string name="btn_reanalyze">Re-Analyze</string>
-    <string name="btn_import_csv">Import CSV</string>
-    <string name="btn_validate_key">Validate Key</string>
-    <string name="btn_download">Download</string>
-    <string name="btn_activate">Activate</string>
-    
-    <!-- Disclaimers -->
-    <string name="academic_disclaimer">Notice: R A . i O is designed as an educational assistant and study helper. Please use ethically and responsibly. Never use during official exams or closed tests.</string>
-    <string name="exam_detected_warning">⚠️ Warning: Keywords like "Exam" or "Test" were detected on screen. Please ensure ethical usage.</string>
+    <string name="mode_library">Mode Library</string>
+    <string name="mode_offline">Mode AI Offline</string>
+    <string name="mode_cloud">Mode AI Open Key</string>
 </resources>

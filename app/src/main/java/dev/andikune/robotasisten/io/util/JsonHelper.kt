@@ -1,25 +1,20 @@
 package dev.andikune.robotasisten.io.util
 
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.google.gson.Gson
 
 /**
- * JSON serialization helper using Moshi.
+ * JSON serialization helper using Gson.
  */
 object JsonHelper {
-    val moshi: Moshi = Moshi.Builder()
-        .addLast(KotlinJsonAdapterFactory())
-        .build()
+    val gson: Gson = Gson()
 
     inline fun <reified T> toJson(value: T): String {
-        val adapter = moshi.adapter(T::class.java)
-        return adapter.toJson(value)
+        return gson.toJson(value)
     }
 
     inline fun <reified T> fromJson(json: String): T? {
         return try {
-            val adapter = moshi.adapter(T::class.java)
-            adapter.fromJson(json)
+            gson.fromJson(json, T::class.java)
         } catch (e: Exception) {
             LogHelper.e("JsonHelper", "Failed to parse json", e)
             null

@@ -1,7 +1,5 @@
 package dev.andikune.robotasisten.io.logic
 
-import dev.andikune.robotasisten.io.service.MyAccessibilityService
-
 /**
  * Strategy pattern deciding how to capture question content from the screen.
  */
@@ -12,10 +10,7 @@ enum class CaptureMode {
 
 object CaptureStrategy {
     fun selectStrategy(): CaptureMode {
-        return if (MyAccessibilityService.instance != null) {
-            CaptureMode.ACCESSIBILITY_NODES
-        } else {
-            CaptureMode.SCREEN_OCR
-        }
+        /* TODO: Detect whether accessibility service is actively connected */
+        return CaptureMode.ACCESSIBILITY_NODES
     }
 }

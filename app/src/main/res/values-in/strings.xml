@@ -1,62 +1,10 @@
 <resources>
     <string name="app_name">R A . i O</string>
-    <string name="app_display_title">R A . i O</string>
-    <string name="app_subtitle">Asisten belajar dengan overlay robot mengambang</string>
-    <string name="accessibility_service_description">Layanan Aksesibilitas R A . i O menganalisa soal belajar pada layar dan membantu pengisian jawaban yang telah dikonfirmasi.</string>
-    
-    <!-- Navigation & Tabs -->
-    <string name="nav_home">Beranda</string>
-    <string name="nav_settings">Pengaturan</string>
-    <string name="nav_history">Riwayat</string>
-    <string name="nav_help">Bantuan</string>
-
-    <!-- Modes -->
-    <string name="mode_library_title">Mode Library</string>
-    <string name="mode_library_desc">Jawab tanpa AI, tanpa internet. Cepat &amp; gratis dengan aturan lokal.</string>
-    <string name="mode_offline_title">Mode AI Offline</string>
-    <string name="mode_offline_desc">AI di HP. Unduh model sekali, pakai selamanya tanpa kuota internet.</string>
-    <string name="mode_cloud_title">Mode AI Open Key</string>
-    <string name="mode_cloud_desc">Pakai API key sendiri. Pilih provider: OpenAI, Gemini, Claude, Groq, DeepSeek, dll.</string>
-
-    <!-- Home Actions -->
+    <string name="home_title">R A . i O</string>
+    <string name="home_subtitle">Asisten belajar dengan overlay</string>
     <string name="start_robot">🚀 MULAI ROBOT</string>
     <string name="stop_robot">⏸ Hentikan Robot</string>
-    <string name="active_mode_label">Mode Aktif</string>
-    <string name="robot_status_label">Status Robot</string>
-    <string name="robot_running">Aktif Mengambang</string>
-    <string name="robot_stopped">Berhenti</string>
-    <string name="quota_today">Kuota AI hari ini: %1$d / %2$d</string>
-
-    <!-- Overlay Bubble & Menu -->
-    <string name="overlay_analyze_screen">🔍 Analisa Layar</string>
-    <string name="overlay_auto_answer">⚡ Jawab Otomatis</string>
-    <string name="overlay_ocr_read">📸 Baca Visual (OCR)</string>
-    <string name="overlay_history">📜 Riwayat</string>
-    <string name="overlay_settings">⚙️ Pengaturan</string>
-    <string name="overlay_hide">👁 Sembunyikan Bubble</string>
-    <string name="overlay_stop">❌ Matikan Robot</string>
-
-    <!-- Statuses -->
-    <string name="status_ready">Siap menganalisa</string>
-    <string name="status_analyzing">🔍 Menganalisa...</string>
-    <string name="status_answering">⚡ Menjawab...</string>
-    <string name="status_ready_answer">✅ Jawaban siap</string>
-    <string name="status_filled">✅ Jawaban terisi ke aplikasi</string>
-    <string name="status_failed">❌ Gagal: %1$s</string>
-
-    <!-- Dialogs & Buttons -->
-    <string name="btn_confirm">Konfirmasi</string>
-    <string name="btn_cancel">Batal</string>
-    <string name="btn_save">Simpan</string>
-    <string name="btn_fill">Isi Jawaban</string>
-    <string name="btn_edit">Edit Jawaban</string>
-    <string name="btn_reanalyze">Analisa Ulang</string>
-    <string name="btn_import_csv">Import CSV</string>
-    <string name="btn_validate_key">Validasi API Key</string>
-    <string name="btn_download">Unduh</string>
-    <string name="btn_activate">Aktifkan Model</string>
-    
-    <!-- Disclaimers -->
-    <string name="academic_disclaimer">Peringatan: R A . i O adalah alat bantu belajar. Harap gunakan secara bertanggung jawab. Jangan digunakan saat ujian atau ulangan tertutup.</string>
-    <string name="exam_detected_warning">⚠️ Peringatan: Terdeteksi kata "ujian", "UTS", "UAS", atau "ulangan" di layar. Gunakan secara beretika.</string>
+    <string name="mode_library">Mode Library</string>
+    <string name="mode_offline">Mode AI Offline</string>
+    <string name="mode_cloud">Mode AI Open Key</string>
 </resources>

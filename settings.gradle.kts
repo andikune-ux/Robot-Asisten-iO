@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "R A . i O"
+rootProject.name = "RAiO"
 
 include(":app")

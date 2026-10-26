@@ -1,6 +1,6 @@
 package dev.andikune.robotasisten.io.data.ai
 
-import com.squareup.moshi.Json
+import com.google.gson.annotations.SerializedName
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -18,7 +18,7 @@ data class ChatCompletionRequest(
     val model: String,
     val messages: List<ChatMessage>,
     val temperature: Double = 0.3,
-    @Json(name = "max_tokens") val maxTokens: Int = 300
+    @SerializedName("max_tokens") val maxTokens: Int = 300
 )
 
 data class ChatChoice(
