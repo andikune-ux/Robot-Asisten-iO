@@ -9,9 +9,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 data class OfflineModelSpec(
     val id: String,
@@ -63,36 +60,16 @@ class ModelDownloader(private val context: Context) {
     val downloadProgress: StateFlow<Map<String, Float>> = _downloadProgress.asStateFlow()
 
     fun isModelDownloaded(model: OfflineModelSpec): Boolean {
-        val target = File(FileHelper.getModelsDir(context), model.filename)
-        return target.exists() && target.length() > 0
+        // No real downloader or model loader is available yet. Do not advertise
+        // legacy placeholder/partial files as executable models.
+        return false
     }
 
     suspend fun startDownload(model: OfflineModelSpec, onComplete: (Boolean) -> Unit) {
         withContext(Dispatchers.IO) {
-            val target = File(FileHelper.getModelsDir(context), model.filename)
-            try {
-                LogHelper.i("ModelDownloader", "Simulating download/fetching model ${model.name}")
-                // Create or stream mock/real model file for offline execution
-                val fos = FileOutputStream(target)
-                val dummyHeader = "RAIO_OFFLINE_LLM_HEADER_${model.id}\n".toByteArray()
-                fos.write(dummyHeader)
-                
-                // Emulate chunk progress
-                for (step in 1..10) {
-                    kotlinx.coroutines.delay(200)
-                    val progress = step / 10f
-                    _downloadProgress.value = _downloadProgress.value.toMutableMap().apply {
-                        put(model.id, progress)
-                    }
-                }
-                fos.flush()
-                fos.close()
-                LogHelper.i("ModelDownloader", "Model download completed for ${model.name}")
-                onComplete(true)
-            } catch (e: Exception) {
-                LogHelper.e("ModelDownloader", "Model download failed for ${model.name}", e)
-                onComplete(false)
-            }
+            LogHelper.w("ModelDownloader", "Real model download is not implemented for ${model.id}")
+            _downloadProgress.value = _downloadProgress.value.toMutableMap().apply { remove(model.id) }
+            onComplete(false)
         }
     }
 }

@@ -3,15 +3,12 @@ package dev.andikune.robotasisten.io.util
 import dev.andikune.robotasisten.io.data.db.CacheDao
 import dev.andikune.robotasisten.io.data.db.CacheEntity
 
-/**
- * Manages caching layer to intercept identical queries and save AI tokens.
- */
+/** Manages cached answers. */
 class CacheManager(private val cacheDao: CacheDao) {
-
-    suspend fun getCachedAnswer(query: String): String? {
-        val hash = EncryptionHelper.sha256(normalize(query))
-        val entry = cacheDao.getByHash(hash)
-        if (entry != null) {
+    suspend fun getCachedAnswer(query: String, mode: String? = null): String? {
+        val normalized = normalize(query)
+        val entry = cacheDao.getByHash(hashFor(normalized, mode))
+        if (entry != null && (mode == null || entry.mode == mode)) {
             cacheDao.updateCache(entry.copy(hitCount = entry.hitCount + 1))
             return entry.answer
         }
@@ -20,22 +17,20 @@ class CacheManager(private val cacheDao: CacheDao) {
 
     suspend fun putAnswer(query: String, answer: String, mode: String) {
         val normalized = normalize(query)
-        val hash = EncryptionHelper.sha256(normalized)
-        cacheDao.insertCache(
-            CacheEntity(
-                queryHash = hash,
-                queryNormalized = normalized,
-                answer = answer,
-                mode = mode
-            )
-        )
+        cacheDao.insertCache(CacheEntity(
+            queryHash = hashFor(normalized, mode),
+            queryNormalized = normalized,
+            answer = answer,
+            mode = mode
+        ))
     }
 
-    suspend fun clear() {
-        cacheDao.clearCache()
-    }
+    suspend fun clear() { cacheDao.clearCache() }
 
-    private fun normalize(text: String): String {
-        return text.lowercase().replace(Regex("[^a-z0-9 ]"), " ").trim()
-    }
+    private fun hashFor(normalized: String, mode: String?): String =
+        EncryptionHelper.sha256(if (mode == null) normalized else "$mode:$normalized")
+
+    private fun normalize(text: String): String = text.lowercase()
+        .replace(Regex("[^\\p{L}\\p{N} ]"), " ")
+        .replace(Regex("\\s+"), " ").trim()
 }

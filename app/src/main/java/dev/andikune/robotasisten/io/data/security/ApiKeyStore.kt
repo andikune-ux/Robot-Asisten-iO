@@ -24,8 +24,8 @@ class ApiKeyStore(context: Context) {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     } catch (e: Exception) {
-        LogHelper.e("ApiKeyStore", "Failed initializing EncryptedSharedPreferences, falling back", e)
-        context.getSharedPreferences("raio_secure_keys_fallback", Context.MODE_PRIVATE)
+        LogHelper.e("ApiKeyStore", "Failed initializing encrypted API-key storage", e)
+        throw IllegalStateException("Penyimpanan kunci terenkripsi tidak tersedia", e)
     }
 
     fun saveApiKey(provider: String, key: String) {

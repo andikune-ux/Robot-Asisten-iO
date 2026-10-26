@@ -16,7 +16,8 @@ data class AiProviderItem(
     val baseUrl: String,
     val defaultModel: String,
     val models: List<ProviderModelInfo>,
-    val isCustom: Boolean = false
+    val isCustom: Boolean = false,
+    val supportsOpenAiChatCompletions: Boolean = true
 )
 
 object AiProviderConfig {
@@ -41,7 +42,8 @@ object AiProviderConfig {
                 ProviderModelInfo("gemini-1.5-flash", "Gemini 1.5 Flash", "1M", "Extremely fast & massive context"),
                 ProviderModelInfo("gemini-1.5-pro", "Gemini 1.5 Pro", "2M", "Highest reasoning quality"),
                 ProviderModelInfo("gemini-2.0-flash", "Gemini 2.0 Flash", "1M", "Next-gen experimental")
-            )
+            ),
+            supportsOpenAiChatCompletions = false
         ),
         AiProviderItem(
             id = "Groq",
@@ -72,7 +74,8 @@ object AiProviderConfig {
             models = listOf(
                 ProviderModelInfo("claude-3-5-haiku-20241022", "Claude 3.5 Haiku", "200k", "Fastest Claude"),
                 ProviderModelInfo("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet", "200k", "State of the art intelligence")
-            )
+            ),
+            supportsOpenAiChatCompletions = false
         ),
         AiProviderItem(
             id = "OpenRouter",
@@ -126,6 +129,6 @@ object AiProviderConfig {
 
     fun getProvider(id: String): AiProviderItem {
         return supportedProviders.find { it.id.equals(id, ignoreCase = true) }
-            ?: supportedProviders.first()
+            ?: throw IllegalArgumentException("Provider tidak didukung: $id")
     }
 }

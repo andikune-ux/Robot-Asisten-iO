@@ -28,8 +28,9 @@ class FallbackChain(
         activeMode: String,
         questionType: QuestionType
     ): ResolutionResult {
-        // Step 1: Check Cache
-        val cached = cacheMatcher.findInCache(question)
+        // Cloud provider/model/key are not part of the current cache key, so do not
+        // reuse a cloud answer after the user's cloud configuration changes.
+        val cached = if (activeMode == "AI_OPEN_KEY") null else cacheMatcher.findInCache(question, activeMode)
         if (!cached.isNullOrBlank()) {
             LogHelper.i("FallbackChain", "Resolved via Cache")
             return ResolutionResult(answer = cached, source = "💾 Cache", isCacheHit = true)
@@ -54,7 +55,6 @@ class FallbackChain(
             "AI_OPEN_KEY" -> {
                 val cloudAns = aiRepository.queryCloud(question)
                 if (!cloudAns.isNullOrBlank()) {
-                    cacheMatcher.saveToCache(question, cloudAns, "AI_OPEN_KEY")
                     return ResolutionResult(answer = cloudAns, source = "☁️ Cloud")
                 }
             }

@@ -1,5 +1,9 @@
 package dev.andikune.robotasisten.io.ui.screens
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,7 +23,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +31,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.andikune.robotasisten.io.service.MyAccessibilityService
 import dev.andikune.robotasisten.io.ui.components.PermissionItem
 import dev.andikune.robotasisten.io.util.PermissionHelper
@@ -37,17 +44,28 @@ fun PermissionChecklistScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var hasOverlay by remember { mutableStateOf(PermissionHelper.hasOverlayPermission(context)) }
     var hasAccessibility by remember { mutableStateOf(PermissionHelper.isAccessibilityServiceEnabled(context, MyAccessibilityService::class.java)) }
     var hasBattery by remember { mutableStateOf(PermissionHelper.isBatteryOptimizationIgnored(context)) }
     var hasNotif by remember { mutableStateOf(PermissionHelper.hasNotificationPermission(context)) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasNotif = granted || PermissionHelper.hasNotificationPermission(context) }
 
-    // Re-check permissions when returning to screen
-    LaunchedEffect(Unit) {
+    fun refreshPermissions() {
         hasOverlay = PermissionHelper.hasOverlayPermission(context)
         hasAccessibility = PermissionHelper.isAccessibilityServiceEnabled(context, MyAccessibilityService::class.java)
         hasBattery = PermissionHelper.isBatteryOptimizationIgnored(context)
         hasNotif = PermissionHelper.hasNotificationPermission(context)
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refreshPermissions()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -81,38 +99,31 @@ fun PermissionChecklistScreen(
                 description = "Wajib untuk menampilkan bubble robot mengambang di atas semua aplikasi belajar.",
                 icon = Icons.Default.Layers,
                 isGranted = hasOverlay,
-                onRequestPermission = {
-                    PermissionHelper.openOverlaySettings(context)
-                }
+                onRequestPermission = { PermissionHelper.openOverlaySettings(context) }
             )
-
             PermissionItem(
                 title = "Layanan Aksesibilitas (Accessibility)",
                 description = "Wajib untuk membaca teks soal di layar dan membantu klik opsi / isi teks.",
                 icon = Icons.Default.Accessibility,
                 isGranted = hasAccessibility,
-                onRequestPermission = {
-                    PermissionHelper.openAccessibilitySettings(context)
-                }
+                onRequestPermission = { PermissionHelper.openAccessibilitySettings(context) }
             )
-
             PermissionItem(
                 title = "Abaikan Optimasi Baterai",
                 description = "Mencegah sistem mematikan background service saat aplikasi belajar sedang aktif.",
                 icon = Icons.Default.BatteryAlert,
                 isGranted = hasBattery,
-                onRequestPermission = {
-                    PermissionHelper.openBatteryOptimizationSettings(context)
-                }
+                onRequestPermission = { PermissionHelper.openBatteryOptimizationSettings(context) }
             )
-
             PermissionItem(
                 title = "Izin Notifikasi",
                 description = "Menampilkan kontrol cepat dan status robot di status bar.",
                 icon = Icons.Default.Notifications,
                 isGranted = hasNotif,
                 onRequestPermission = {
-                    // Handled automatically on Android 13+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotif) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
                 }
             )
         }

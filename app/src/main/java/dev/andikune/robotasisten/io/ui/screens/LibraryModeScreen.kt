@@ -1,5 +1,7 @@
 package dev.andikune.robotasisten.io.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,6 +62,23 @@ fun LibraryModeScreen(
     val ruleRepo = AppModule.provideRuleRepository(context)
     val rules by ruleRepo.allRules.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    val json = context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                        ?: error("File tidak dapat dibaca.")
+                    val importedCount = dev.andikune.robotasisten.io.di.AppModule.provideBackupHelper(context).importRulesFromJson(json)
+                    check(importedCount > 0) { "File JSON tidak berisi aturan untuk diimpor." }
+                    importedCount
+                }.onSuccess { count ->
+                    ToastHelper.showShort(context, "✅ Berhasil mengimpor $count aturan")
+                }.onFailure { error ->
+                    ToastHelper.showShort(context, "Impor gagal: ${error.localizedMessage ?: "file tidak valid"}")
+                }
+            }
+        }
+    }
 
     var searchQuery by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -83,18 +102,11 @@ fun LibraryModeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        scope.launch {
-                            val dummyCsvRules = listOf(
-                                RuleEntity(questionPattern = "hukum newton 1", answer = "Hukum Kelembaman (Inersia): Benda diam tetap diam atau bergerak lurus beraturan jika resultan gaya = 0.", category = "Fisika"),
-                                RuleEntity(questionPattern = "rumus pythagoras", answer = "a² + b² = c²", category = "Matematika"),
-                                RuleEntity(questionPattern = "penemu telepon", answer = "Alexander Graham Bell", category = "Sejarah")
-                            )
-                            ruleRepo.insertAll(dummyCsvRules)
-                            ToastHelper.showShort(context, "✅ Berhasil memuat 3 aturan tambahan!")
-                        }
+                    androidx.compose.material3.TextButton(onClick = {
+                        importLauncher.launch(arrayOf("application/json", "text/*"))
                     }) {
-                        Icon(Icons.Default.FileUpload, contentDescription = "Import Contoh")
+                        Icon(Icons.Default.FileUpload, contentDescription = null)
+                        Text("Import JSON")
                     }
                 }
             )

@@ -59,14 +59,14 @@ fun CloudModeScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val keyStore = AppModule.provideApiKeyStore(context)
+    val keyStore = remember(context) { runCatching { AppModule.provideApiKeyStore(context) }.getOrNull() }
     val settingsRepo = AppModule.provideSettingsRepository(context)
-    val aiRepo = AppModule.provideAiRepository(context)
+    val aiRepo = remember(context) { runCatching { AppModule.provideAiRepository(context) }.getOrNull() }
 
     val selectedProvider by settingsRepo.selectedProvider.collectAsState()
     val selectedModel by settingsRepo.selectedModel.collectAsState()
 
-    var apiKeyInput by remember { mutableStateOf(keyStore.getApiKey(selectedProvider) ?: "") }
+    var apiKeyInput by remember(selectedProvider, keyStore) { mutableStateOf(keyStore?.getApiKey(selectedProvider) ?: "") }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var isValidating by remember { mutableStateOf(false) }
     var providerDropdownExpanded by remember { mutableStateOf(false) }
@@ -74,7 +74,8 @@ fun CloudModeScreen(
 
     val scope = rememberCoroutineScope()
     val providerItem = AiProviderConfig.getProvider(selectedProvider)
-    val hasKey = keyStore.hasApiKey(selectedProvider)
+    val hasKey = keyStore?.hasApiKey(selectedProvider) == true
+    val providerSupported = providerItem.supportsOpenAiChatCompletions
 
     Scaffold(
         topBar = {
@@ -100,6 +101,15 @@ fun CloudModeScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            if (keyStore == null) {
+                Text("Penyimpanan terenkripsi tidak tersedia di perangkat ini. API key tidak akan disimpan.",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (aiRepo == null) {
+                Text("Layanan AI tidak dapat diinisialisasi karena penyimpanan aman tidak tersedia.",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -130,13 +140,13 @@ fun CloudModeScreen(
                     expanded = providerDropdownExpanded,
                     onDismissRequest = { providerDropdownExpanded = false }
                 ) {
-                    AiProviderConfig.supportedProviders.forEach { item ->
+                    AiProviderConfig.supportedProviders.filter { it.supportsOpenAiChatCompletions }.forEach { item ->
                         DropdownMenuItem(
                             text = { Text(item.name) },
                             onClick = {
                                 settingsRepo.setSelectedProvider(item.id)
                                 settingsRepo.setSelectedModel(item.defaultModel)
-                                apiKeyInput = keyStore.getApiKey(item.id) ?: ""
+                                apiKeyInput = keyStore?.getApiKey(item.id) ?: ""
                                 providerDropdownExpanded = false
                             }
                         )
@@ -145,6 +155,11 @@ fun CloudModeScreen(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
+
+            if (!providerSupported) {
+                Text("Provider ini belum didukung karena API-nya tidak kompatibel dengan format yang digunakan aplikasi. Pilih provider lain.",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
 
             // Step 2: API Key input
             Text(
@@ -181,7 +196,7 @@ fun CloudModeScreen(
                 if (hasKey) {
                     OutlinedButton(
                         onClick = {
-                            keyStore.removeApiKey(selectedProvider)
+                            keyStore?.removeApiKey(selectedProvider)
                             apiKeyInput = ""
                             ToastHelper.showShort(context, "API Key dihapus")
                         },
@@ -200,10 +215,11 @@ fun CloudModeScreen(
                         if (apiKeyInput.isNotBlank()) {
                             isValidating = true
                             scope.launch {
-                                val result = aiRepo.validateCloudKey(selectedProvider, apiKeyInput)
+                                val repository = aiRepo ?: return@launch
+                                val result = repository.validateCloudKey(selectedProvider, apiKeyInput)
                                 isValidating = false
                                 if (result.isSuccess) {
-                                    keyStore.saveApiKey(selectedProvider, apiKeyInput)
+                                    keyStore?.saveApiKey(selectedProvider, apiKeyInput)
                                     ToastHelper.showShort(context, "✅ API Key valid dan tersimpan!")
                                 } else {
                                     ToastHelper.showLong(context, "❌ ${result.exceptionOrNull()?.message ?: "Validasi gagal"}")
@@ -211,7 +227,7 @@ fun CloudModeScreen(
                             }
                         }
                     },
-                    enabled = apiKeyInput.isNotBlank() && !isValidating,
+                    enabled = keyStore != null && aiRepo != null && providerSupported && apiKeyInput.isNotBlank() && !isValidating,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     if (isValidating) {

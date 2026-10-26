@@ -98,7 +98,7 @@ fun OfflineModeScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Unduh model sekali dan gunakan selamanya tanpa koneksi internet. Model dieksekusi secara lokal di chipset ponsel.",
+            text = "Unduhan dan eksekusi model offline belum tersedia pada versi ini. Jawaban AI Offline belum dapat dihasilkan.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -176,21 +176,11 @@ fun OfflineModeScreen(
                             ) {
                                 if (!isDownloaded) {
                                     Button(
-                                        onClick = {
-                                            scope.launch {
-                                                ToastHelper.showShort(context, "Memulai unduhan model ${model.name}")
-                                                downloader.startDownload(model) { success ->
-                                                    if (success) {
-                                                        ToastHelper.showShort(context, "✅ Model ${model.name} siap digunakan!")
-                                                    }
-                                                }
-                                            }
-                                        },
+                                        onClick = {},
+                                        enabled = false,
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Icon(Icons.Default.Download, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Unduh Model")
+                                        Text("Unduhan belum tersedia")
                                     }
                                 } else {
                                     if (!isCurrentActive) {

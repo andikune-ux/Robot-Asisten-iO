@@ -390,8 +390,13 @@ fun HomeScreen(
 }
 
 private fun startRobotOverlay(context: Context, mode: String) {
+    val serviceMode = when (mode.lowercase()) {
+        "offline", "ai_offline" -> "AI_OFFLINE"
+        "cloud", "ai_open_key" -> "AI_OPEN_KEY"
+        else -> "LIBRARY"
+    }
     val startIntent = Intent(context, OverlayService::class.java).apply {
-        putExtra("mode", mode.uppercase())
+        putExtra("mode", serviceMode)
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         context.startForegroundService(startIntent)

@@ -1,16 +1,10 @@
 package dev.andikune.robotasisten.io.logic
 
-/**
- * Strategy pattern deciding how to capture question content from the screen.
- */
-enum class CaptureMode {
-    ACCESSIBILITY_NODES,
-    SCREEN_OCR
-}
+/** Strategy pattern deciding how to capture question content from the screen. */
+enum class CaptureMode { ACCESSIBILITY_NODES, SCREEN_OCR }
 
 object CaptureStrategy {
-    fun selectStrategy(): CaptureMode {
-        /* TODO: Detect whether accessibility service is actively connected */
-        return CaptureMode.ACCESSIBILITY_NODES
-    }
+    /** Caller must pass a positively detected live accessibility connection. */
+    fun selectStrategy(accessibilityConnected: Boolean = false): CaptureMode =
+        if (accessibilityConnected) CaptureMode.ACCESSIBILITY_NODES else CaptureMode.SCREEN_OCR
 }

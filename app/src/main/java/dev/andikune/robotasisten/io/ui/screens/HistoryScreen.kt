@@ -1,5 +1,7 @@
 package dev.andikune.robotasisten.io.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,20 +49,33 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(
-    onNavigateBack: () -> Unit
-) {
+fun HistoryScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
     val historyRepo = AppModule.provideHistoryRepository(context)
     val backupHelper = AppModule.provideBackupHelper(context)
     val historyList by historyRepo.allHistory.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
-
     var searchQuery by remember { mutableStateOf("") }
+    var pendingExportJson by remember { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val json = pendingExportJson
+        pendingExportJson = null
+        if (uri == null || json == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { it.write(json) }
+                ?: error("Tidak dapat membuka lokasi penyimpanan yang dipilih.")
+        }.onSuccess {
+            ToastHelper.showShort(context, "✅ Ekspor riwayat berhasil disimpan")
+        }.onFailure { error ->
+            ToastHelper.showLong(context, "Ekspor gagal: ${error.localizedMessage ?: "kesalahan penyimpanan"}")
+        }
+    }
     val filteredList = historyList.filter {
         it.question.contains(searchQuery, ignoreCase = true) ||
-                it.answer.contains(searchQuery, ignoreCase = true) ||
-                it.mode.contains(searchQuery, ignoreCase = true)
+            it.answer.contains(searchQuery, ignoreCase = true) ||
+            it.mode.contains(searchQuery, ignoreCase = true)
     }
 
     Scaffold(
@@ -75,16 +90,24 @@ fun HistoryScreen(
                 actions = {
                     IconButton(onClick = {
                         scope.launch {
-                            val file = backupHelper.exportHistoryToJson(context)
-                            ToastHelper.showShort(context, "✅ Ekspor berhasil ke ${file.name}")
+                            runCatching {
+                                val file = backupHelper.exportHistoryToJson(context)
+                                file.readText(Charsets.UTF_8)
+                            }.onSuccess { json ->
+                                pendingExportJson = json
+                                exportLauncher.launch("raio_history_${System.currentTimeMillis()}.json")
+                            }.onFailure { error ->
+                                ToastHelper.showLong(context, "Ekspor gagal: ${error.localizedMessage ?: "kesalahan ekspor"}")
+                            }
                         }
                     }) {
-                        Icon(Icons.Default.Download, contentDescription = "Ekspor JSON")
+                        Icon(Icons.Default.Download, contentDescription = "Simpan ekspor JSON")
                     }
                     IconButton(onClick = {
                         scope.launch {
-                            historyRepo.clearHistory()
-                            ToastHelper.showShort(context, "Riwayat dibersihkan")
+                            runCatching { historyRepo.clearHistory() }
+                                .onSuccess { ToastHelper.showShort(context, "Riwayat dibersihkan") }
+                                .onFailure { error -> ToastHelper.showLong(context, "Gagal menghapus riwayat: ${error.localizedMessage}") }
                         }
                     }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = "Hapus Semua")
@@ -107,9 +130,7 @@ fun HistoryScreen(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             )
-
             Spacer(modifier = Modifier.height(14.dp))
-
             if (filteredList.isEmpty()) {
                 EmptyState(
                     title = "Belum Ada Riwayat",
@@ -134,35 +155,13 @@ fun HistoryScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = item.mode,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = TimeHelper.formatDateTime(item.timestamp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Text(item.mode, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                    Text(TimeHelper.formatDateTime(item.timestamp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-
                                 Spacer(modifier = Modifier.height(6.dp))
-
-                                Text(
-                                    text = item.question,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-
+                                Text(item.question, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(modifier = Modifier.height(6.dp))
-
-                                Text(
-                                    text = "Jawaban: ${item.answer}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                Text("Jawaban: ${item.answer}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }

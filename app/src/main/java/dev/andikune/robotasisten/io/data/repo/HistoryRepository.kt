@@ -38,11 +38,11 @@ class HistoryRepository(
         val current = statsDao.getStatsDirect() ?: StatsEntity()
         val updated = current.copy(
             totalQuestions = current.totalQuestions + 1,
-            libraryCount = if (mode.contains("LIBRARY", true)) current.libraryCount + 1 else current.libraryCount,
-            offlineCount = if (mode.contains("OFFLINE", true)) current.offlineCount + 1 else current.offlineCount,
-            cloudCount = if (mode.contains("CLOUD", true) || mode.contains("OPEN_KEY", true)) current.cloudCount + 1 else current.cloudCount,
+            libraryCount = if (mode.equals("LIBRARY", true)) current.libraryCount + 1 else current.libraryCount,
+            offlineCount = if (mode.equals("OFFLINE", true)) current.offlineCount + 1 else current.offlineCount,
+            cloudCount = if (mode.equals("CLOUD", true) || mode.equals("OPEN_KEY", true)) current.cloudCount + 1 else current.cloudCount,
             cacheHits = if (isCacheHit) current.cacheHits + 1 else current.cacheHits,
-            dailyQuotaUsed = if (mode.contains("CLOUD", true)) current.dailyQuotaUsed + 1 else current.dailyQuotaUsed,
+            dailyQuotaUsed = if (mode.equals("CLOUD", true) || mode.equals("OPEN_KEY", true)) current.dailyQuotaUsed + 1 else current.dailyQuotaUsed,
             lastUpdated = System.currentTimeMillis()
         )
         statsDao.insertOrUpdate(updated)

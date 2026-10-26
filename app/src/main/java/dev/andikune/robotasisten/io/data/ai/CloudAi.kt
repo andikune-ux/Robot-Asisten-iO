@@ -31,6 +31,7 @@ class CloudAi(
         return withContext(Dispatchers.IO) {
             try {
                 val provider = AiProviderConfig.getProvider(providerName)
+                require(provider.supportsOpenAiChatCompletions) { "Protokol provider $providerName belum didukung" }
                 val testUrl = if (provider.baseUrl.endsWith("/")) "${provider.baseUrl}models" else "${provider.baseUrl}/models"
                 
                 val request = Request.Builder()
@@ -39,17 +40,12 @@ class CloudAi(
                     .get()
                     .build()
 
-                val response = httpClient.newCall(request).execute()
-                val code = response.code
-                response.close()
-
-                if (code in 200..299) {
-                    Result.success(true)
-                } else if (code in 400..403) {
-                    Result.failure(Exception("API Key ditolak (HTTP $code). Periksa kembali kunci Anda."))
-                } else {
-                    // Some endpoints don't expose /models with GET, test passes if valid format
-                    Result.success(true)
+                httpClient.newCall(request).execute().use { response ->
+                    when (response.code) {
+                        in 200..299 -> Result.success(true)
+                        401, 403 -> Result.failure(IllegalArgumentException("API Key ditolak (HTTP ${response.code}). Periksa kembali kunci Anda."))
+                        else -> Result.failure(IllegalStateException("Validasi provider gagal (HTTP ${response.code}); endpoint/protokol tidak dapat diverifikasi."))
+                    }
                 }
             } catch (e: Exception) {
                 LogHelper.e("CloudAi", "Failed validating key: ${e.message}", e)
@@ -73,6 +69,7 @@ class CloudAi(
         return withContext(Dispatchers.IO) {
             try {
                 val provider = AiProviderConfig.getProvider(providerName)
+                require(provider.supportsOpenAiChatCompletions) { "Protokol provider $providerName belum didukung" }
                 val sanitizedQuery = SanitizerHelper.sanitizeQuery(question)
                 val detected = QuestionDetector.detect(sanitizedQuery)
                 val prompt = PromptBuilder.buildPrompt(sanitizedQuery, detected.type, detected.options)
@@ -103,22 +100,18 @@ class CloudAi(
                     .post(body)
                     .build()
 
-                val response = httpClient.newCall(request).execute()
-                val responseBody = response.body?.string() ?: ""
-                response.close()
-
-                if (response.isSuccessful) {
-                    val json = JSONObject(responseBody)
-                    val choices = json.optJSONArray("choices")
-                    if (choices != null && choices.length() > 0) {
-                        val firstChoice = choices.getJSONObject(0)
-                        val message = firstChoice.optJSONObject("message")
-                        val content = message?.optString("content")
-                        return@withContext content?.trim()
+                httpClient.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
+                    if (response.isSuccessful) {
+                        val choices = JSONObject(responseBody).optJSONArray("choices")
+                        val content = choices?.takeIf { it.length() > 0 }
+                            ?.getJSONObject(0)?.optJSONObject("message")?.optString("content")
+                            ?.takeIf { it.isNotBlank() }
+                        return@withContext content
                     }
+                    LogHelper.w("CloudAi", "HTTP error ${response.code}: $responseBody")
+                    null
                 }
-                LogHelper.w("CloudAi", "HTTP error ${response.code}: $responseBody")
-                null
             } catch (e: Exception) {
                 LogHelper.e("CloudAi", "Cloud query failed", e)
                 null
