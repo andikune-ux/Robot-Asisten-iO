@@ -69,7 +69,7 @@ class MyAccessibilityService : AccessibilityService() {
         mainHandler.postDelayed(timeout, SCREENSHOT_TIMEOUT_MS)
 
         try {
-            takeScreenshot(Display.DEFAULT_DISPLAY, mainHandlerExecutor, object : TakeScreenshotCallback() {
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainHandlerExecutor, object : TakeScreenshotCallback {
                 override fun onSuccess(result: ScreenshotResult) {
                     if (!completed.compareAndSet(false, true)) {
                         result.hardwareBuffer.closeSafely()
