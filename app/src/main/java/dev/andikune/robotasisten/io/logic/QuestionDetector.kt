@@ -42,9 +42,12 @@ object QuestionDetector {
         return DetectedQuestion(clean, type, clean, extractedOptions, hasInput)
     }
 
-    private fun extractTextOptions(text: String): List<String> = text.lineSequence().mapNotNull { line ->
-        optionRegex.matchEntire(line.trim())?.groupValues?.get(1)?.trim()?.takeIf(String::isNotEmpty)
-    }.toList()
+    private fun extractTextOptions(text: String): List<String> {
+        val options = text.lineSequence().mapNotNull { line ->
+            optionRegex.matchEntire(line.trim())?.groupValues?.get(1)?.trim()?.takeIf(String::isNotEmpty)
+        }.toList()
+        return options.takeIf { it.size >= 2 }.orEmpty()
+    }
 
     private fun extractedOptionsCount(text: String): Int = extractTextOptions(text).size
 }
