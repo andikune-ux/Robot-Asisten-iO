@@ -53,7 +53,7 @@ fun PrivacyPolicyScreen(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "R A . i O mengutamakan keamanan dan privasi. Semua API Key disimpan di Android Keystore terenkripsi. Tidak ada data pribadi, email, atau nomor telepon yang dikirimkan tanpa sanitasi data.",
+                text = "RELX.iO menyimpan API key terenkripsi melalui Android Keystore. Pembacaan layar hanya dilakukan setelah pengguna memilih aksi OCR/analisa. Jika mode Cloud dipilih, teks soal yang terbaca dikirim ke provider AI yang dikonfigurasi untuk diproses sesuai kebijakan provider tersebut; pilih mode Library atau Offline untuk pemrosesan lokal. Aplikasi tidak melakukan perekaman layar terus-menerus.",
                 style = MaterialTheme.typography.bodySmall
             )
 
@@ -67,7 +67,7 @@ fun PrivacyPolicyScreen(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Layanan Aksesibilitas digunakan semata-mata saat pengguna memicu tombol '🔍 Analisa' atau '⚡ Jawab Otomatis' untuk mendeteksi teks soal dan membantu mengisi jawaban. Aplikasi tidak merekam pengetikan kata sandi atau data sensitif di luar konteks belajar.",
+                text = "Layanan Aksesibilitas dipakai setelah pengguna memicu OCR/analisa, untuk membaca teks layar dan mencoba mengisi kolom teks yang sedang fokus setelah pengguna memilih tindakan isi. Layanan tidak berjalan sebagai perekam layar terus-menerus; hindari menjalankan analisa pada halaman yang berisi data sensitif.",
                 style = MaterialTheme.typography.bodySmall
             )
 

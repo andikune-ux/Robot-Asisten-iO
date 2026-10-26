@@ -3,71 +3,90 @@ package dev.andikune.robotasisten.io.logic
 import dev.andikune.robotasisten.io.data.ai.AiRepository
 import dev.andikune.robotasisten.io.data.ai.AnswerTemplate
 import dev.andikune.robotasisten.io.util.LogHelper
+import java.util.Locale
 
-/**
- * Result returned by the resolution pipeline.
- */
 data class ResolutionResult(
     val answer: String,
-    val source: String, // 📚 Library, 🧠 Offline, ☁️ Cloud, 💾 Cache, 📝 Template
+    val source: String,
     val explanation: String = "",
     val isCacheHit: Boolean = false
 )
 
-/**
- * Executes tiered fallback strategy across Cache -> Mode Engine -> Fallback Engine -> Template.
- */
+/** Resolves known local rules or the selected AI mode without inventing an answer. */
 class FallbackChain(
     private val cacheMatcher: CacheMatcher,
     private val ruleEngine: RuleEngine,
     private val aiRepository: AiRepository
 ) {
-
     suspend fun resolve(
         question: String,
         activeMode: String,
         questionType: QuestionType
     ): ResolutionResult {
-        // Cloud provider/model/key are not part of the current cache key, so do not
-        // reuse a cloud answer after the user's cloud configuration changes.
-        val cached = if (activeMode == "AI_OPEN_KEY") null else cacheMatcher.findInCache(question, activeMode)
+        val mode = activeMode.uppercase(Locale.ROOT)
+        // Cloud responses depend on provider/model/key and must never be reused across configuration changes.
+        val cached = if (mode == MODE_AI_OPEN_KEY) null else cacheMatcher.findInCache(question, mode)
         if (!cached.isNullOrBlank()) {
-            LogHelper.i("FallbackChain", "Resolved via Cache")
-            return ResolutionResult(answer = cached, source = "💾 Cache", isCacheHit = true)
+            LogHelper.i(TAG, "Resolved via cache")
+            return ResolutionResult(answer = cached, source = "Cache", isCacheHit = true)
         }
 
-        // Step 2: Try primary requested mode
-        when (activeMode) {
-            "LIBRARY" -> {
-                val rule = ruleEngine.match(question)
-                if (rule != null) {
-                    cacheMatcher.saveToCache(question, rule.answer, "LIBRARY")
-                    return ResolutionResult(answer = rule.answer, source = "📚 Library", explanation = rule.explanation)
+        when (mode) {
+            MODE_LIBRARY -> {
+                ruleEngine.match(question)?.let { rule ->
+                    cacheMatcher.saveToCache(question, rule.answer, MODE_LIBRARY)
+                    return ResolutionResult(answer = rule.answer, source = "Library", explanation = rule.explanation)
                 }
             }
-            "AI_OFFLINE" -> {
-                val offlineAns = aiRepository.queryOffline(question)
-                if (!offlineAns.isNullOrBlank()) {
-                    cacheMatcher.saveToCache(question, offlineAns, "AI_OFFLINE")
-                    return ResolutionResult(answer = offlineAns, source = "🧠 Offline")
+            MODE_AI_OFFLINE -> {
+                aiRepository.queryOffline(question)?.takeIf(String::isNotBlank)?.let { answer ->
+                    cacheMatcher.saveToCache(question, answer, MODE_AI_OFFLINE)
+                    return ResolutionResult(answer = answer, source = "AI Offline")
                 }
             }
-            "AI_OPEN_KEY" -> {
-                val cloudAns = aiRepository.queryCloud(question)
-                if (!cloudAns.isNullOrBlank()) {
-                    return ResolutionResult(answer = cloudAns, source = "☁️ Cloud")
+            MODE_AI_OPEN_KEY -> {
+                aiRepository.queryCloud(question)?.takeIf(String::isNotBlank)?.let { answer ->
+                    return ResolutionResult(answer = answer, source = "AI Cloud")
+                }
+            }
+            else -> return unavailable("Mode \"$activeMode\" tidak dikenali. Pilih ulang mode di aplikasi.")
+        }
+
+        // A known library rule is a safe fallback for an AI mode; never invent other facts.
+        ruleEngine.match(question)?.let { rule ->
+            return ResolutionResult(answer = rule.answer, source = "Library fallback", explanation = rule.explanation)
+        }
+
+        return when (mode) {
+            MODE_AI_OFFLINE -> unavailable(
+                "Model AI Offline belum siap. Unduh model Qwen pada halaman Mode AI Offline, lalu coba lagi."
+            )
+            MODE_AI_OPEN_KEY -> unavailable(
+                "AI Cloud tidak mengembalikan jawaban. Periksa koneksi, provider, API key, kuota, dan konfigurasi model."
+            )
+            else -> {
+                val template = AnswerTemplate.generateTemplate(question, questionType)
+                if (template.startsWith(UNANSWERED_PREFIX, ignoreCase = true)) {
+                    unavailable("Tidak ada aturan Library yang cocok. Tambahkan materi/aturan di Library atau pilih mode AI.")
+                } else {
+                    ResolutionResult(answer = template, source = "Kalkulator lokal")
                 }
             }
         }
+    }
 
-        // Step 3: Fallback to Library Rule Engine
-        val fallbackRule = ruleEngine.match(question)
-        if (fallbackRule != null) {
-            return ResolutionResult(answer = fallbackRule.answer, source = "📚 Library Fallback", explanation = fallbackRule.explanation)
-        }
+    private fun unavailable(message: String) = ResolutionResult(
+        answer = message,
+        source = SOURCE_UNAVAILABLE,
+        explanation = "Tidak ada jawaban faktual yang dibuat; tindakan otomatis dinonaktifkan."
+    )
 
-        // Step 4: Fallback to Template Engine
-        val templateAnswer = AnswerTemplate.generateTemplate(question, questionType)
-        return ResolutionResult(answer = templateAnswer, source = "📝 Template")
+    companion object {
+        private const val TAG = "FallbackChain"
+        private const val MODE_LIBRARY = "LIBRARY"
+        private const val MODE_AI_OFFLINE = "AI_OFFLINE"
+        private const val MODE_AI_OPEN_KEY = "AI_OPEN_KEY"
+        private const val UNANSWERED_PREFIX = "Jawaban belum dapat ditentukan"
+        const val SOURCE_UNAVAILABLE = "Tidak tersedia"
     }
 }

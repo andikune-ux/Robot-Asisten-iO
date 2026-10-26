@@ -54,7 +54,7 @@ fun OnboardingScreen(
 ) {
     val pages = listOf(
         OnboardingPageData(
-            title = "R A . i O",
+            title = "RELX.iO",
             subtitle = "Robot Asisten Belajar Mengambang",
             description = "Overlay cerdas yang mengambang di atas aplikasi belajar Anda. Mampu membaca layar, menganalisa soal, dan membantu autofill jawaban secara instan.",
             icon = Icons.Default.AutoAwesome
@@ -68,7 +68,7 @@ fun OnboardingScreen(
         OnboardingPageData(
             title = "Etika Penggunaan",
             subtitle = "Belajar Bertanggung Jawab",
-            description = "R A . i O dirancang murni sebagai rekan belajar mandiri. Mohon tidak menggunakan aplikasi ini selama ujian, evaluasi formal, atau tes tertutup.",
+            description = "RELX.iO dirancang sebagai rekan belajar mandiri. Mohon tidak menggunakan aplikasi ini selama ujian, evaluasi formal, atau tes tertutup.",
             icon = Icons.Default.Shield
         )
     )

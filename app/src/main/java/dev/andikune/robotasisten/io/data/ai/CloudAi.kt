@@ -11,6 +11,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -27,12 +28,13 @@ class CloudAi(
         .readTimeout(25, TimeUnit.SECONDS)
         .build()
 
-    suspend fun validateApiKey(providerName: String, apiKey: String): Result<Boolean> {
+    suspend fun validateApiKey(providerName: String, apiKey: String, customBaseUrl: String? = null): Result<Boolean> {
         return withContext(Dispatchers.IO) {
             try {
                 val provider = AiProviderConfig.getProvider(providerName)
                 require(provider.supportsOpenAiChatCompletions) { "Protokol provider $providerName belum didukung" }
-                val testUrl = if (provider.baseUrl.endsWith("/")) "${provider.baseUrl}models" else "${provider.baseUrl}/models"
+                val baseUrl = resolveBaseUrl(provider, customBaseUrl)
+                val testUrl = "${baseUrl}models"
                 
                 val request = Request.Builder()
                     .url(testUrl)
@@ -54,7 +56,7 @@ class CloudAi(
         }
     }
 
-    suspend fun query(question: String, providerName: String, modelName: String): String? {
+    suspend fun query(question: String, providerName: String, modelName: String, customBaseUrl: String? = null): String? {
         if (!rateLimiter.canProceed()) {
             LogHelper.w("CloudAi", "Rate limit exceeded, delaying query")
             return null
@@ -70,11 +72,13 @@ class CloudAi(
             try {
                 val provider = AiProviderConfig.getProvider(providerName)
                 require(provider.supportsOpenAiChatCompletions) { "Protokol provider $providerName belum didukung" }
+                require(modelName.isNotBlank()) { "Model AI belum dipilih" }
+                val baseUrl = resolveBaseUrl(provider, customBaseUrl)
                 val sanitizedQuery = SanitizerHelper.sanitizeQuery(question)
                 val detected = QuestionDetector.detect(sanitizedQuery)
                 val prompt = PromptBuilder.buildPrompt(sanitizedQuery, detected.type, detected.options)
 
-                val endpoint = if (provider.baseUrl.endsWith("/")) "${provider.baseUrl}chat/completions" else "${provider.baseUrl}/chat/completions"
+                val endpoint = "${baseUrl}chat/completions"
 
                 val payload = JSONObject().apply {
                     put("model", modelName)
@@ -117,5 +121,18 @@ class CloudAi(
                 null
             }
         }
+    }
+
+    private fun resolveBaseUrl(provider: AiProviderItem, customBaseUrl: String?): String {
+        val candidate = if (provider.isCustom) customBaseUrl?.trim().orEmpty() else provider.baseUrl
+        require(candidate.isNotBlank()) { "Masukkan Base URL HTTPS untuk provider kustom" }
+        val parsed = candidate.toHttpUrlOrNull()
+            ?: throw IllegalArgumentException("Base URL tidak valid")
+        require(parsed.scheme == "https") { "Base URL harus menggunakan HTTPS agar API key tidak dikirim tanpa enkripsi" }
+        require(parsed.username.isEmpty() && parsed.password.isEmpty() && parsed.query == null && parsed.fragment == null) {
+            "Base URL tidak boleh berisi kredensial, query, atau fragment"
+        }
+        val normalizedPath = parsed.encodedPath.trimEnd('/') + "/"
+        return parsed.newBuilder().encodedPath(normalizedPath).build().toString()
     }
 }

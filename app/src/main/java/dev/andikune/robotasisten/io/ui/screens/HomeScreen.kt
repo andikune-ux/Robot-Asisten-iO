@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,12 +57,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import dev.andikune.robotasisten.io.R
 import dev.andikune.robotasisten.io.di.AppModule
 import dev.andikune.robotasisten.io.service.OverlayService
+import dev.andikune.robotasisten.io.service.MyAccessibilityService
 import dev.andikune.robotasisten.io.ui.theme.CyanAccent
 import dev.andikune.robotasisten.io.ui.theme.ErrorRed
 import dev.andikune.robotasisten.io.ui.theme.SuccessGreen
@@ -106,6 +110,17 @@ fun HomeScreen(
         mutableStateOf(savedMode.lowercase())
     }
     var showPermissionDialog by remember { mutableStateOf(false) }
+    var startPending by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isRobotRunning, startPending) {
+        if (isRobotRunning) {
+            startPending = false
+            ToastHelper.showShort(context, "Overlay RELX.iO siap digunakan")
+        } else if (startPending) {
+            delay(8_000)
+            if (!OverlayService.isRunning.value) startPending = false
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -150,15 +165,14 @@ fun HomeScreen(
                     Box(
                         modifier = Modifier
                             .size(52.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(TechBluePrimary, CyanAccent)
-                                )
-                            ),
+                            .clip(RoundedCornerShape(14.dp)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("🤖", fontSize = 28.sp)
+                        Image(
+                            painter = androidx.compose.ui.res.painterResource(R.drawable.ic_launcher_art),
+                            contentDescription = stringResource(R.string.app_name),
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
@@ -170,7 +184,7 @@ fun HomeScreen(
                             letterSpacing = 1.sp
                         )
                         Text(
-                            text = "Robot Asisten Belajar Mengambang",
+                            text = stringResource(R.string.home_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -232,7 +246,7 @@ fun HomeScreen(
             // 2. Kartu Mode AI Offline
             PremiumModeCard(
                 title = stringResource(R.string.mode_offline),
-                subtitle = "Model AI di chipset HP. Unduh sekali, pakai selamanya.",
+                subtitle = "Qwen2.5 0.5B di perangkat. Unduh model sekitar 547 MB untuk inferensi lokal.",
                 badgeText = "On-Device MediaPipe",
                 badgeColor = Color(0xFF8B5CF6),
                 icon = Icons.Default.Memory,
@@ -249,7 +263,7 @@ fun HomeScreen(
             // 3. Kartu Mode AI Cloud Open Key
             PremiumModeCard(
                 title = stringResource(R.string.mode_cloud),
-                subtitle = "Gunakan API key sendiri: OpenAI, Gemini, Claude, Groq.",
+                subtitle = "API key untuk provider OpenAI-compatible, misalnya OpenAI, Groq, DeepSeek, dan OpenRouter.",
                 badgeText = "Multi-Provider AI",
                 badgeColor = CyanAccent,
                 icon = Icons.Default.Key,
@@ -263,6 +277,15 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            if (selectedMode !in setOf("library", "offline", "cloud")) {
+                Text(
+                    text = "Pilih salah satu mode di atas untuk mengaktifkan tombol mulai.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             // TOMBOL UTAMA BESAR 64dp
             val buttonColor by animateColorAsState(
                 targetValue = if (isRobotRunning) ErrorRed else MaterialTheme.colorScheme.primary,
@@ -273,19 +296,23 @@ fun HomeScreen(
             Button(
                 onClick = {
                     if (isRobotRunning) {
-                        // Hentikan service
                         val stopIntent = Intent(context, OverlayService::class.java)
-                        context.stopService(stopIntent)
-                        ToastHelper.showShort(context, "⏸ Robot mengambang dihentikan")
+                        val accepted = context.stopService(stopIntent)
+                        ToastHelper.showShort(context, if (accepted) "Permintaan menghentikan overlay dikirim" else "Overlay tidak sedang berjalan")
                     } else {
-                        // Mulai service
-                        if (!PermissionHelper.hasOverlayPermission(context)) {
+                        if (selectedMode !in setOf("library", "offline", "cloud")) {
+                            ToastHelper.showShort(context, "Pilih mode operasi terlebih dahulu")
+                        } else if (!PermissionHelper.hasOverlayPermission(context) ||
+                            !PermissionHelper.isAccessibilityServiceEnabled(context, MyAccessibilityService::class.java)
+                        ) {
                             showPermissionDialog = true
                         } else {
+                            startPending = true
                             startRobotOverlay(context, selectedMode)
                         }
                     }
                 },
+                enabled = isRobotRunning || (!startPending && selectedMode in setOf("library", "offline", "cloud")),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
@@ -365,16 +392,16 @@ fun HomeScreen(
                 )
             },
             title = {
-                Text("Izin Tampil di Atas Aplikasi Lain")
+                Text("Izin Overlay dan Aksesibilitas diperlukan")
             },
             text = {
-                Text("Agar robot R A . i O dapat mengambang di atas aplikasi belajar Anda, aktifkan izin 'Tampil di atas aplikasi lain' pada layar pengaturan sistem.")
+                Text("Untuk menampilkan bubble dan membaca soal layar, aktifkan izin 'Tampil di atas aplikasi lain' serta Layanan Aksesibilitas RELX.iO. Kedua izin dapat ditinjau dan diaktifkan dari Checklist Izin.")
             },
             confirmButton = {
                 Button(
                     onClick = {
                         showPermissionDialog = false
-                        PermissionHelper.openOverlaySettings(context)
+                        onNavigatePermissions()
                     }
                 ) {
                     Text("Buka Pengaturan")
@@ -391,19 +418,25 @@ fun HomeScreen(
 
 private fun startRobotOverlay(context: Context, mode: String) {
     val serviceMode = when (mode.lowercase()) {
+        "library" -> "LIBRARY"
         "offline", "ai_offline" -> "AI_OFFLINE"
         "cloud", "ai_open_key" -> "AI_OPEN_KEY"
-        else -> "LIBRARY"
+        else -> {
+            ToastHelper.showShort(context, "Pilih mode yang valid sebelum memulai")
+            return
+        }
     }
     val startIntent = Intent(context, OverlayService::class.java).apply {
         putExtra("mode", serviceMode)
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        context.startForegroundService(startIntent)
-    } else {
-        context.startService(startIntent)
+    runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(startIntent)
+        else context.startService(startIntent)
+    }.onSuccess {
+        ToastHelper.showShort(context, "Meminta RELX.iO memulai overlay…")
+    }.onFailure { error ->
+        ToastHelper.showShort(context, "Overlay gagal dimulai: ${error.message ?: "periksa izin"}")
     }
-    ToastHelper.showLong(context, "🚀 Robot R A . i O aktif! Ketuk atau seret bubble di layar.")
 }
 
 @Composable

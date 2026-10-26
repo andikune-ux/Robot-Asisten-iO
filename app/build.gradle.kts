@@ -12,31 +12,26 @@ android {
     applicationId = "dev.andikune.robotasisten.io"
     minSdk = 26
     targetSdk = 34
-    versionCode = 1
-    versionName = "1.0.0"
+    versionCode = 2
+    versionName = "1.1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
+      val keystorePath = System.getenv("KEYSTORE_PATH")
+      if (!keystorePath.isNullOrBlank()) storeFile = file(keystorePath)
       storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
+      keyAlias = System.getenv("KEY_ALIAS")
       keyPassword = System.getenv("KEY_PASSWORD")
     }
-    getByName("debug") {
-      storeFile = file("keystore/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androidandikune"
-      keyPassword = "android"
-    }
-    create("debugConfig") {
-      storeFile = file("keystore/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androidandikune"
-      keyPassword = "android"
+    create("debugStable") {
+      val keystorePath = System.getenv("DEBUG_KEYSTORE_PATH")
+      if (!keystorePath.isNullOrBlank()) storeFile = file(keystorePath)
+      storePassword = System.getenv("DEBUG_KEYSTORE_PASSWORD")
+      keyAlias = System.getenv("DEBUG_KEY_ALIAS")
+      keyPassword = System.getenv("DEBUG_KEY_PASSWORD")
     }
   }
 
@@ -48,7 +43,8 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      signingConfig = signingConfigs.getByName("debug")
+      val debugKeystorePath = System.getenv("DEBUG_KEYSTORE_PATH")
+      if (!debugKeystorePath.isNullOrBlank()) signingConfig = signingConfigs.getByName("debugStable")
     }
   }
 
@@ -105,7 +101,7 @@ dependencies {
 
   implementation("androidx.security:security-crypto:1.1.0-alpha06")
   implementation("com.google.mlkit:text-recognition:16.0.1")
-  implementation("com.google.mediapipe:tasks-genai:0.10.14")
+  implementation("com.google.mediapipe:tasks-genai:0.10.27")
 
   testImplementation(libs.junit)
   testImplementation(libs.androidx.junit)

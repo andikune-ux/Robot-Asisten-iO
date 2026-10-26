@@ -1,6 +1,7 @@
 package dev.andikune.robotasisten.io.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -29,10 +30,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.andikune.robotasisten.io.R
+import dev.andikune.robotasisten.io.BuildConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,7 +45,7 @@ fun AboutScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Tentang R A . i O") },
+                title = { Text("Tentang ${stringResource(R.string.app_name)}") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
@@ -59,32 +62,23 @@ fun AboutScreen(
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_robot),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(44.dp)
-                )
-            }
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_art),
+                contentDescription = stringResource(R.string.app_name),
+                modifier = Modifier.size(112.dp)
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "R A . i O",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.primary
             )
 
             Text(
-                text = "Versi 1.0.0 (Build 1)",
+                text = "Versi ${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -104,7 +98,7 @@ fun AboutScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "R A . i O adalah asisten belajar interaktif dengan robot overlay cerdas yang mengambang di atas aplikasi Android lainnya. Robot mampu membaca layar melalui Layanan Aksesibilitas, mengklasifikasi pertanyaan, mencari jawaban melalui 3 mode terintegrasi (Library, Offline AI, dan Open Key Cloud AI), serta membantu autofill jawaban secara aman dengan konfirmasi pengguna.",
+                        text = "RELX.iO adalah asisten belajar dengan mode Library, AI Offline (model diunduh ke perangkat), dan AI Cloud berbasis API key.",
                         style = MaterialTheme.typography.bodySmall,
                         lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
                     )
@@ -117,7 +111,7 @@ fun AboutScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Application ID: dev.andikune.robotasisten.io\nArsitektur: Kotlin, Jetpack Compose, Room, WorkManager, Accessibility Service",
+                        text = "Application ID: dev.andikune.robotasisten.io\nArsitektur: Kotlin, Jetpack Compose, Room, MediaPipe, ML Kit, Accessibility Service",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

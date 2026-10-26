@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,6 +34,7 @@ import dev.andikune.robotasisten.io.R
 @Composable
 fun OverlayMenuPanel(
     activeMode: String,
+    confirmBeforeFill: Boolean,
     onAnalyze: () -> Unit,
     onAutoAnswer: () -> Unit,
     onOcrRead: () -> Unit,
@@ -65,13 +65,13 @@ fun OverlayMenuPanel(
             ) {
                 Column {
                     Text(
-                        text = "🤖 R A . i O",
+                        text = stringResource(R.string.app_name),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Mode: $activeMode",
+                        text = "Mode: ${activeMode.ifBlank { "Belum dipilih" }}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -93,9 +93,19 @@ fun OverlayMenuPanel(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(modifier = Modifier.height(4.dp))
 
+            Text(
+                text = "Ketuk bubble untuk membuka/menutup menu atau menutup hasil; ketuk dua kali untuk analisa; tahan untuk membuka menu; seret untuk memindahkan.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+
             MenuItemRow(title = "🔍 Analisa Layar", onClick = onAnalyze)
-            MenuItemRow(title = "⚡ Jawab Otomatis", onClick = onAutoAnswer)
-            MenuItemRow(title = "📸 Baca Visual (OCR)", onClick = onOcrRead)
+            MenuItemRow(
+                title = if (confirmBeforeFill) "🧠 Siapkan Jawaban (konfirmasi)" else "⚡ Jawab & Isi Otomatis",
+                onClick = onAutoAnswer
+            )
+            MenuItemRow(title = "📸 Baca Teks Layar (OCR)", onClick = onOcrRead)
             MenuItemRow(title = "📜 Riwayat", onClick = onOpenHistory)
             MenuItemRow(title = "⚙️ Pengaturan", onClick = onOpenSettings)
             MenuItemRow(title = "👁 Sembunyikan Bubble", onClick = onHideBubble)

@@ -4,9 +4,9 @@ package dev.andikune.robotasisten.io.util
  * Global application constants.
  */
 object Constants {
-    const val APP_NAME = "R A . i O"
+    const val APP_NAME = "RELX.iO"
     const val NOTIFICATION_CHANNEL_ID = "raio_overlay_service_channel"
-    const val NOTIFICATION_CHANNEL_NAME = "R A . i O Overlay Service"
+    const val NOTIFICATION_CHANNEL_NAME = "RELX.iO Overlay Service"
     const val NOTIFICATION_ID = 1001
 
     // Modes
@@ -19,6 +19,8 @@ object Constants {
     const val ACTION_STOP_OVERLAY = "dev.andikune.robotasisten.io.action.STOP_OVERLAY"
     const val ACTION_TRIGGER_ANALYZE = "dev.andikune.robotasisten.io.action.TRIGGER_ANALYZE"
     const val ACTION_TRIGGER_AUTO_ANSWER = "dev.andikune.robotasisten.io.action.TRIGGER_AUTO_ANSWER"
+    const val ACTION_RESTORE_OVERLAY = "dev.andikune.robotasisten.io.action.RESTORE_OVERLAY"
+    const val EXTRA_NAVIGATION_ROUTE = "dev.andikune.robotasisten.io.extra.NAVIGATION_ROUTE"
 
     // System Prompt for Essay & Study QA
     const val SYSTEM_PROMPT_ESSAY =

@@ -1,7 +1,7 @@
 <resources>
-    <string name="app_name">R A . i O</string>
-    <string name="home_title">R A . i O</string>
-    <string name="home_subtitle">Floating study assistant overlay</string>
+    <string name="app_name">RELX.iO</string>
+    <string name="home_title">RELX.iO</string>
+    <string name="home_subtitle">Asisten belajar dengan overlay</string>
     <string name="start_robot">🚀 START ROBOT</string>
     <string name="stop_robot">⏸ STOP ROBOT</string>
     <string name="mode_library">Mode Library</string>

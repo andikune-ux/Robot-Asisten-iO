@@ -1,5 +1,6 @@
 package dev.andikune.robotasisten.io.ui.screens
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -65,17 +66,25 @@ fun CloudModeScreen(
 
     val selectedProvider by settingsRepo.selectedProvider.collectAsState()
     val selectedModel by settingsRepo.selectedModel.collectAsState()
+    val savedCustomBaseUrl by settingsRepo.customBaseUrl.collectAsState()
 
     var apiKeyInput by remember(selectedProvider, keyStore) { mutableStateOf(keyStore?.getApiKey(selectedProvider) ?: "") }
+    var customBaseUrlInput by remember { mutableStateOf(savedCustomBaseUrl) }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var isValidating by remember { mutableStateOf(false) }
     var providerDropdownExpanded by remember { mutableStateOf(false) }
     var modelDropdownExpanded by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
-    val providerItem = AiProviderConfig.getProvider(selectedProvider)
+    val resolvedProvider = runCatching { AiProviderConfig.getProvider(selectedProvider) }.getOrNull()
+    val providerItem = resolvedProvider ?: AiProviderConfig.getProvider("OpenAI")
     val hasKey = keyStore?.hasApiKey(selectedProvider) == true
-    val providerSupported = providerItem.supportsOpenAiChatCompletions
+    val providerSupported = resolvedProvider != null && providerItem.supportsOpenAiChatCompletions
+    val customBaseUrlValid = if (providerItem.isCustom) {
+        val parsed = runCatching { Uri.parse(customBaseUrlInput.trim()) }.getOrNull()
+        customBaseUrlInput.trim().startsWith("https://", ignoreCase = true) && !parsed?.host.isNullOrBlank()
+    } else true
+    val configurationReady = hasKey && providerSupported && selectedModel.isNotBlank() && customBaseUrlValid
 
     Scaffold(
         topBar = {
@@ -111,7 +120,22 @@ fun CloudModeScreen(
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            if (providerItem.isCustom) {
+                OutlinedTextField(
+                    value = customBaseUrlInput,
+                    onValueChange = {
+                        customBaseUrlInput = it
+                        settingsRepo.setCustomBaseUrl(it)
+                    },
+                    label = { Text("Base URL HTTPS (Custom Provider)") },
+                    placeholder = { Text("https://server-anda.example/v1/") },
+                    supportingText = { Text("Endpoint OpenAI-compatible. API key hanya dikirim lewat HTTPS.") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             // Step 1: Provider selection
             Text(
@@ -127,7 +151,7 @@ fun CloudModeScreen(
                 onExpandedChange = { providerDropdownExpanded = !providerDropdownExpanded }
             ) {
                 OutlinedTextField(
-                    value = providerItem.name,
+                    value = resolvedProvider?.name ?: "Pilih provider yang didukung",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Provider AI") },
@@ -157,7 +181,9 @@ fun CloudModeScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             if (!providerSupported) {
-                Text("Provider ini belum didukung karena API-nya tidak kompatibel dengan format yang digunakan aplikasi. Pilih provider lain.",
+                Text(
+                    if (resolvedProvider == null) "Provider tersimpan tidak dikenal. Pilih salah satu provider yang tersedia."
+                    else "Provider ini belum didukung karena protokolnya tidak kompatibel. Pilih provider lain.",
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
 
@@ -215,19 +241,25 @@ fun CloudModeScreen(
                         if (apiKeyInput.isNotBlank()) {
                             isValidating = true
                             scope.launch {
-                                val repository = aiRepo ?: return@launch
-                                val result = repository.validateCloudKey(selectedProvider, apiKeyInput)
-                                isValidating = false
-                                if (result.isSuccess) {
-                                    keyStore?.saveApiKey(selectedProvider, apiKeyInput)
-                                    ToastHelper.showShort(context, "✅ API Key valid dan tersimpan!")
-                                } else {
-                                    ToastHelper.showLong(context, "❌ ${result.exceptionOrNull()?.message ?: "Validasi gagal"}")
+                                try {
+                                    val repository = aiRepo ?: error("Layanan AI tidak tersedia")
+                                    val result = repository.validateCloudKey(selectedProvider, apiKeyInput)
+                                    if (result.isSuccess) {
+                                        keyStore?.saveApiKey(selectedProvider, apiKeyInput)
+                                            ?: error("Penyimpanan API key aman tidak tersedia")
+                                        ToastHelper.showShort(context, "API Key valid dan tersimpan")
+                                    } else {
+                                        ToastHelper.showLong(context, result.exceptionOrNull()?.message ?: "Validasi gagal")
+                                    }
+                                } catch (error: Exception) {
+                                    ToastHelper.showLong(context, "Gagal memvalidasi/menyimpan key: ${error.message ?: "coba lagi"}")
+                                } finally {
+                                    isValidating = false
                                 }
                             }
                         }
                     },
-                    enabled = keyStore != null && aiRepo != null && providerSupported && apiKeyInput.isNotBlank() && !isValidating,
+                    enabled = keyStore != null && aiRepo != null && providerSupported && customBaseUrlValid && apiKeyInput.isNotBlank() && !isValidating,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     if (isValidating) {
@@ -251,41 +283,51 @@ fun CloudModeScreen(
             )
             Spacer(modifier = Modifier.height(6.dp))
 
-            ExposedDropdownMenuBox(
-                expanded = modelDropdownExpanded,
-                onExpandedChange = { modelDropdownExpanded = !modelDropdownExpanded }
-            ) {
+            if (providerItem.isCustom) {
                 OutlinedTextField(
                     value = selectedModel,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Pilihan Model") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelDropdownExpanded) },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth()
+                    onValueChange = { settingsRepo.setSelectedModel(it) },
+                    label = { Text("Model ID") },
+                    placeholder = { Text("contoh: qwen2.5:7b") },
+                    modifier = Modifier.fillMaxWidth()
                 )
-                ExposedDropdownMenu(
+            } else {
+                ExposedDropdownMenuBox(
                     expanded = modelDropdownExpanded,
-                    onDismissRequest = { modelDropdownExpanded = false }
+                    onExpandedChange = { modelDropdownExpanded = !modelDropdownExpanded }
                 ) {
-                    providerItem.models.forEach { m ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(m.displayName, fontWeight = FontWeight.Bold)
-                                    Text(
-                                        "${m.description} • Context: ${m.contextLength}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                    OutlinedTextField(
+                        value = selectedModel,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Pilihan Model") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelDropdownExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = modelDropdownExpanded,
+                        onDismissRequest = { modelDropdownExpanded = false }
+                    ) {
+                        providerItem.models.forEach { m ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(m.displayName, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "${m.description} • Context: ${m.contextLength}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    settingsRepo.setSelectedModel(m.id)
+                                    modelDropdownExpanded = false
                                 }
-                            },
-                            onClick = {
-                                settingsRepo.setSelectedModel(m.id)
-                                modelDropdownExpanded = false
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -296,7 +338,7 @@ fun CloudModeScreen(
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (hasKey) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    containerColor = if (configurationReady) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 ),
                 modifier = Modifier.fillMaxWidth()
@@ -308,9 +350,9 @@ fun CloudModeScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text("• Provider: ${providerItem.name}")
+                    Text("• Provider: ${resolvedProvider?.name ?: "Tidak dikenal ($selectedProvider)"}")
                     Text("• Model: $selectedModel")
-                    Text("• Status: ${if (hasKey) "✅ Siap Digunakan" else "⚠️ Kunci Belum Tersimpan"}")
+                    Text("• Status: ${if (configurationReady) "Siap digunakan" else "Belum siap — periksa provider, model, endpoint, dan API key"}")
                 }
             }
         }

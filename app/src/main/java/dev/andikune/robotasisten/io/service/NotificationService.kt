@@ -18,7 +18,7 @@ object NotificationService {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(Constants.NOTIFICATION_CHANNEL_ID, Constants.NOTIFICATION_CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shows status of R A . i O Floating Robot Assistant"
+                description = "Status dan kontrol overlay RELX.iO"
                 setShowBadge(false)
             }
             (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)

@@ -24,10 +24,10 @@ class AiRepository(
     suspend fun queryCloud(question: String): String? {
         val provider = settingsRepository.selectedProvider.value
         val model = settingsRepository.selectedModel.value
-        return cloudAi.query(question, provider, model)
+        return cloudAi.query(question, provider, model, settingsRepository.customBaseUrl.value)
     }
 
     suspend fun validateCloudKey(provider: String, key: String): Result<Boolean> {
-        return cloudAi.validateApiKey(provider, key)
+        return cloudAi.validateApiKey(provider, key, settingsRepository.customBaseUrl.value)
     }
 }

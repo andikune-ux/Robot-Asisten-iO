@@ -87,7 +87,7 @@ fun PermissionChecklistScreen(
                 .padding(16.dp)
         ) {
             Text(
-                text = "R A . i O membutuhkan izin berikut agar robot mengambang dapat membaca soal pada layar dan mengisi jawaban secara otomatis.",
+                text = "RELX.iO membutuhkan izin berikut untuk menampilkan bubble, membaca layar atas permintaan Anda, dan mencoba mengisi kolom teks yang sedang fokus.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -103,7 +103,7 @@ fun PermissionChecklistScreen(
             )
             PermissionItem(
                 title = "Layanan Aksesibilitas (Accessibility)",
-                description = "Wajib untuk membaca teks soal di layar dan membantu klik opsi / isi teks.",
+                description = "Wajib untuk OCR layar saat diminta dan mencoba mengisi kolom teks aktif. Aplikasi tidak menekan pilihan jawaban otomatis.",
                 icon = Icons.Default.Accessibility,
                 isGranted = hasAccessibility,
                 onRequestPermission = { PermissionHelper.openAccessibilitySettings(context) }

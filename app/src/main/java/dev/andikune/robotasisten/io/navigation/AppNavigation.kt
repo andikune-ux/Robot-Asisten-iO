@@ -1,6 +1,7 @@
 package dev.andikune.robotasisten.io.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -30,11 +31,27 @@ object Routes {
     const val PRIVACY = "privacy"
     const val LICENSE = "license"
     const val DEBUG = "debug"
+
+    val destinations = setOf(HOME, LIBRARY, OFFLINE, CLOUD, SETTINGS, HISTORY, PERMISSIONS, DIAGNOSTIC, ABOUT, PRIVACY, LICENSE, DEBUG)
 }
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(
+    initialRoute: String? = null,
+    onInitialRouteHandled: () -> Unit = {}
+) {
     val navController = rememberNavController()
+
+    LaunchedEffect(initialRoute) {
+        val destination = initialRoute?.takeIf { it in Routes.destinations } ?: return@LaunchedEffect
+        if (destination != Routes.HOME) {
+            navController.navigate(destination) {
+                launchSingleTop = true
+                popUpTo(Routes.HOME) { inclusive = false }
+            }
+        }
+        onInitialRouteHandled()
+    }
 
     NavHost(
         navController = navController,

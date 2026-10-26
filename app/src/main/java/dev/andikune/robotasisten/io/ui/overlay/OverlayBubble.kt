@@ -52,8 +52,8 @@ fun OverlayBubble(
     ) {
         Icon(
             painter = painterResource(id = R.drawable.ic_robot),
-            contentDescription = "R A . i O Bubble",
-            tint = Color.White,
+            contentDescription = "RELX.iO Bubble",
+            tint = Color.Unspecified,
             modifier = Modifier.size((sizeDp * 0.6).dp)
         )
     }

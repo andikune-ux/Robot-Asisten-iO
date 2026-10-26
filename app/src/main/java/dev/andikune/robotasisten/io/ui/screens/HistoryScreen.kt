@@ -95,7 +95,7 @@ fun HistoryScreen(onNavigateBack: () -> Unit) {
                                 file.readText(Charsets.UTF_8)
                             }.onSuccess { json ->
                                 pendingExportJson = json
-                                exportLauncher.launch("raio_history_${System.currentTimeMillis()}.json")
+                                exportLauncher.launch("relxio_history_${System.currentTimeMillis()}.json")
                             }.onFailure { error ->
                                 ToastHelper.showLong(context, "Ekspor gagal: ${error.localizedMessage ?: "kesalahan ekspor"}")
                             }

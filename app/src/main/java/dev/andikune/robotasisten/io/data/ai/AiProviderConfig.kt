@@ -118,7 +118,7 @@ object AiProviderConfig {
         AiProviderItem(
             id = "Custom",
             name = "Custom (OpenAI-Compatible)",
-            baseUrl = "http://localhost:11434/v1/",
+            baseUrl = "https://api.example.com/v1/",
             defaultModel = "custom-model",
             models = listOf(
                 ProviderModelInfo("custom-model", "Custom Model", "32k", "User specified endpoint")

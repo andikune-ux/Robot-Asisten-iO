@@ -48,7 +48,7 @@ fun LicenseScreen(
                 .padding(20.dp)
         ) {
             Text(
-                text = "R A . i O Open Source & Third Party Licenses",
+                text = "RELX.iO Open Source & Third-Party Licenses",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary

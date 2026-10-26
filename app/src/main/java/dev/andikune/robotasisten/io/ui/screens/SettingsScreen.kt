@@ -67,7 +67,6 @@ fun SettingsScreen(
     val overlaySize by settingsRepo.overlaySizeDp.collectAsState()
     val overlayOpacity by settingsRepo.overlayOpacity.collectAsState()
     val confirmBeforeFill by settingsRepo.confirmBeforeFill.collectAsState()
-    val autoAnalyze by settingsRepo.autoAnalyze.collectAsState()
     val silentMode by settingsRepo.silentMode.collectAsState()
 
     Scaffold(
@@ -157,20 +156,12 @@ fun SettingsScreen(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Analisa Otomatis Layar", fontWeight = FontWeight.Bold)
-                            Text("Pindai saat berpindah soal secara langsung", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(
-                            checked = autoAnalyze,
-                            onCheckedChange = { settingsRepo.setAutoAnalyze(it) }
-                        )
-                    }
+                    Text("Analisa layar manual", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Teks layar hanya dibaca setelah Anda memilih Analisa atau OCR dari bubble; tidak ada pemindaian otomatis di latar belakang.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
@@ -236,7 +227,7 @@ fun SettingsScreen(
                     HorizontalDivider()
                     SettingsRow(title = "Diagnostik Sistem & HW", icon = Icons.Default.Speed, onClick = onNavigateDiagnostic)
                     HorizontalDivider()
-                    SettingsRow(title = "Tentang Aplikasi R A . i O", icon = Icons.Default.Info, onClick = onNavigateAbout)
+                    SettingsRow(title = "Tentang Aplikasi RELX.iO", icon = Icons.Default.Info, onClick = onNavigateAbout)
                     HorizontalDivider()
                     SettingsRow(title = "Kebijakan Privasi & Etika", icon = Icons.Default.Policy, onClick = onNavigatePrivacy)
                     HorizontalDivider()

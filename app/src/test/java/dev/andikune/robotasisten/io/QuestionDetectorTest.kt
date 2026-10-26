@@ -39,4 +39,10 @@ class QuestionDetectorTest {
     @Test fun testDetectEssay() {
         assertEquals(QuestionType.ESSAY, QuestionDetector.detect("Jelaskan faktor-faktor yang mempengaruhi terjadinya pemanasan global dan dampaknya terhadap ekosistem kutub.").type)
     }
+
+    @Test fun nonQuestionScreenTextIsNotTreatedAsAQuestion() {
+        assertEquals(false, QuestionDetector.isLikelyQuestion("Selamat datang. Daftar materi pembelajaran tersedia di sini."))
+        assertEquals(true, QuestionDetector.isLikelyQuestion("Apa ibu kota Indonesia?"))
+        assertEquals(true, QuestionDetector.isLikelyQuestion("Hitunglah 15 * 4"))
+    }
 }

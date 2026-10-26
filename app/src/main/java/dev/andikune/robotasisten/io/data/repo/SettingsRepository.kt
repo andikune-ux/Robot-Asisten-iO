@@ -2,6 +2,7 @@ package dev.andikune.robotasisten.io.data.repo
 
 import android.content.Context
 import android.content.SharedPreferences
+import dev.andikune.robotasisten.io.data.ai.ModelDownloader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +15,7 @@ class SettingsRepository(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("raio_settings_prefs", Context.MODE_PRIVATE)
 
-    private val _activeMode = MutableStateFlow(prefs.getString(KEY_ACTIVE_MODE, "LIBRARY") ?: "LIBRARY")
+    private val _activeMode = MutableStateFlow(prefs.getString(KEY_ACTIVE_MODE, "") ?: "")
     val activeMode: StateFlow<String> = _activeMode.asStateFlow()
 
     private val _overlaySizeDp = MutableStateFlow(prefs.getInt(KEY_OVERLAY_SIZE, 56))
@@ -26,9 +27,6 @@ class SettingsRepository(context: Context) {
     private val _confirmBeforeFill = MutableStateFlow(prefs.getBoolean(KEY_CONFIRM_BEFORE_FILL, true))
     val confirmBeforeFill: StateFlow<Boolean> = _confirmBeforeFill.asStateFlow()
 
-    private val _autoAnalyze = MutableStateFlow(prefs.getBoolean(KEY_AUTO_ANALYZE, false))
-    val autoAnalyze: StateFlow<Boolean> = _autoAnalyze.asStateFlow()
-
     private val _silentMode = MutableStateFlow(prefs.getBoolean(KEY_SILENT_MODE, false))
     val silentMode: StateFlow<Boolean> = _silentMode.asStateFlow()
 
@@ -38,8 +36,21 @@ class SettingsRepository(context: Context) {
     private val _selectedModel = MutableStateFlow(prefs.getString(KEY_SELECTED_MODEL, "gpt-4o-mini") ?: "gpt-4o-mini")
     val selectedModel: StateFlow<String> = _selectedModel.asStateFlow()
 
-    private val _selectedOfflineModel = MutableStateFlow(prefs.getString(KEY_OFFLINE_MODEL, "Qwen 2.5 0.5B") ?: "Qwen 2.5 0.5B")
+    private val _customBaseUrl = MutableStateFlow(prefs.getString(KEY_CUSTOM_BASE_URL, "") ?: "")
+    val customBaseUrl: StateFlow<String> = _customBaseUrl.asStateFlow()
+
+    private val storedOfflineModel = prefs.getString(KEY_OFFLINE_MODEL, "") ?: ""
+    private val normalizedOfflineModel = if (storedOfflineModel.equals("Qwen 2.5 0.5B", ignoreCase = true)) {
+        ModelDownloader.MODEL_ID
+    } else storedOfflineModel
+    private val _selectedOfflineModel = MutableStateFlow(normalizedOfflineModel)
     val selectedOfflineModel: StateFlow<String> = _selectedOfflineModel.asStateFlow()
+
+    init {
+        if (storedOfflineModel != normalizedOfflineModel) {
+            prefs.edit().putString(KEY_OFFLINE_MODEL, normalizedOfflineModel).apply()
+        }
+    }
 
     private val _isOnboarded = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDED, false))
     val isOnboarded: StateFlow<Boolean> = _isOnboarded.asStateFlow()
@@ -64,11 +75,6 @@ class SettingsRepository(context: Context) {
         _confirmBeforeFill.value = confirm
     }
 
-    fun setAutoAnalyze(auto: Boolean) {
-        prefs.edit().putBoolean(KEY_AUTO_ANALYZE, auto).apply()
-        _autoAnalyze.value = auto
-    }
-
     fun setSilentMode(silent: Boolean) {
         prefs.edit().putBoolean(KEY_SILENT_MODE, silent).apply()
         _silentMode.value = silent
@@ -84,9 +90,15 @@ class SettingsRepository(context: Context) {
         _selectedModel.value = model
     }
 
+    fun setCustomBaseUrl(url: String) {
+        prefs.edit().putString(KEY_CUSTOM_BASE_URL, url.trim()).apply()
+        _customBaseUrl.value = url.trim()
+    }
+
     fun setSelectedOfflineModel(model: String) {
-        prefs.edit().putString(KEY_OFFLINE_MODEL, model).apply()
-        _selectedOfflineModel.value = model
+        val normalized = if (model.equals("Qwen 2.5 0.5B", ignoreCase = true)) ModelDownloader.MODEL_ID else model
+        prefs.edit().putString(KEY_OFFLINE_MODEL, normalized).apply()
+        _selectedOfflineModel.value = normalized
     }
 
     fun setOnboarded(onboarded: Boolean) {
@@ -99,10 +111,10 @@ class SettingsRepository(context: Context) {
         private const val KEY_OVERLAY_SIZE = "overlay_size"
         private const val KEY_OVERLAY_OPACITY = "overlay_opacity"
         private const val KEY_CONFIRM_BEFORE_FILL = "confirm_before_fill"
-        private const val KEY_AUTO_ANALYZE = "auto_analyze"
         private const val KEY_SILENT_MODE = "silent_mode"
         private const val KEY_SELECTED_PROVIDER = "selected_provider"
         private const val KEY_SELECTED_MODEL = "selected_model"
+        private const val KEY_CUSTOM_BASE_URL = "custom_provider_base_url"
         private const val KEY_OFFLINE_MODEL = "selected_offline_model"
         private const val KEY_ONBOARDED = "is_onboarded"
     }
