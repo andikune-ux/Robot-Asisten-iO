@@ -89,6 +89,7 @@ import dev.andikune.robotasisten.io.ui.theme.TechBluePrimary
 import dev.andikune.robotasisten.io.util.ClipboardHelper
 import dev.andikune.robotasisten.io.util.PermissionHelper
 import dev.andikune.robotasisten.io.util.ToastHelper
+import java.util.Locale
 
 @Composable
 fun HomeScreen(
@@ -107,7 +108,7 @@ fun HomeScreen(
     val rules by ruleRepo.allRules.collectAsState(initial = emptyList())
 
     var selectedMode by remember(savedMode) {
-        mutableStateOf(savedMode.lowercase())
+        mutableStateOf(normalizeHomeMode(savedMode))
     }
     var showPermissionDialog by remember { mutableStateOf(false) }
     var startPending by remember { mutableStateOf(false) }
@@ -414,6 +415,13 @@ fun HomeScreen(
             }
         )
     }
+}
+
+internal fun normalizeHomeMode(mode: String): String = when (mode.trim().uppercase(Locale.ROOT)) {
+    "LIBRARY" -> "library"
+    "OFFLINE", "AI_OFFLINE" -> "offline"
+    "CLOUD", "AI_OPEN_KEY" -> "cloud"
+    else -> ""
 }
 
 private fun startRobotOverlay(context: Context, mode: String) {

@@ -12,7 +12,7 @@ UI: Jetpack Compose + Material 3
 Arsitektur utama: satu aplikasi Android, service foreground untuk overlay, Accessibility Service untuk tindakan layar atas permintaan, repository/Room untuk data lokal, adapter AI per mode.
 Minimum Android: API 26 (Android 8.0)
 Compile/target SDK saat dokumen sumber ini ditulis: 34
-Versi rilis sumber saat dokumen ini ditulis: 1.2.1 / versionCode 4
+Versi rilis sumber saat dokumen ini ditulis: 1.2.2 / versionCode 5
 Sumber otoritatif proyek: repository GitHub andikune-ux/Robot-Asisten-iO, branch main. Periksa commit paling baru sebelum melakukan perubahan.
 
 GAMBARAN FITUR DAN ALUR
@@ -74,145 +74,10 @@ CATATAN PRIVASI
 Laporan crash memuat stack trace, model perangkat, versi Android, versi aplikasi, waktu, dan nama thread. Jangan menambahkan isi layar, clipboard, API key, password, atau rahasia ke laporan. File Backup Aman berupa teks plain; pengguna sebaiknya membagikannya hanya kepada pihak yang dipercaya.
 
 
+
 INVENTARIS FILE SUMBER (relatif terhadap root repository)
 =========================================================
 
-app/src/main/AndroidManifest.xml
-app/src/main/assets/relx_project_handoff.txt
-app/src/main/java/dev/andikune/robotasisten/io/MainActivity.kt
-app/src/main/java/dev/andikune/robotasisten/io/RAiOApp.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/ai/AiProvider.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/ai/AiProviderConfig.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/ai/AiRepository.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/ai/AnswerTemplate.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/ai/CloudAi.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/ai/LibraryAi.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/ai/ModelDownloader.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/ai/OfflineAi.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/ai/PromptBuilder.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/AiQueueDao.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/AiQueueEntity.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/AppDatabase.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/CacheDao.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/CacheEntity.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/HistoryDao.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/HistoryEntity.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/RuleDao.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/RuleEntity.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/StatsDao.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/db/StatsEntity.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/repo/HistoryRepository.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/repo/RuleRepository.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/repo/SettingsRepository.kt
-app/src/main/java/dev/andikune/robotasisten/io/data/security/ApiKeyStore.kt
-app/src/main/java/dev/andikune/robotasisten/io/di/AppModule.kt
-app/src/main/java/dev/andikune/robotasisten/io/logic/AiCallQueue.kt
-app/src/main/java/dev/andikune/robotasisten/io/logic/AutoFillEngine.kt
-app/src/main/java/dev/andikune/robotasisten/io/logic/CacheMatcher.kt
-app/src/main/java/dev/andikune/robotasisten/io/logic/CaptureStrategy.kt
-app/src/main/java/dev/andikune/robotasisten/io/logic/FallbackChain.kt
-app/src/main/java/dev/andikune/robotasisten/io/logic/QuestionDetector.kt
-app/src/main/java/dev/andikune/robotasisten/io/logic/RuleEngine.kt
-app/src/main/java/dev/andikune/robotasisten/io/logic/ScreenStateTracker.kt
-app/src/main/java/dev/andikune/robotasisten/io/navigation/AppNavigation.kt
-app/src/main/java/dev/andikune/robotasisten/io/service/CleanupWorker.kt
-app/src/main/java/dev/andikune/robotasisten/io/service/MyAccessibilityService.kt
-app/src/main/java/dev/andikune/robotasisten/io/service/NotificationService.kt
-app/src/main/java/dev/andikune/robotasisten/io/service/OverlayService.kt
-app/src/main/java/dev/andikune/robotasisten/io/service/QuickSettingsTile.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/components/EmptyState.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/components/ModeCard.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/components/PermissionItem.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/components/StatusIndicator.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/overlay/AnalysisPreviewCard.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/overlay/AnswerPreviewCard.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/overlay/OcrPreviewCard.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/overlay/OverlayBubble.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/overlay/OverlayMenuPanel.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/overlay/StatusBubble.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/AboutScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/CloudModeScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/CrashReportScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/DebugScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/DiagnosticScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/HistoryScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/HomeScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/LibraryModeScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/LicenseScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/OfflineModeScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/OnboardingScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/PermissionChecklistScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/PrivacyPolicyScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/SafeBackupScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/SettingsScreen.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/screens/SplashActivity.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/theme/Color.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/theme/Theme.kt
-app/src/main/java/dev/andikune/robotasisten/io/ui/theme/Type.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/BackupHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/CacheManager.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/ClipboardHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/Constants.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/CrashHandler.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/DeviceHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/EncryptionHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/FileHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/GestureHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/HapticHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/InputMethodHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/JsonHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/LogHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/NetworkHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/NetworkMonitor.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/OcrHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/PermissionHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/RateLimiter.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/RetryHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/SafeProjectBackup.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/SanitizerHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/SoundHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/TimeHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/ToastHelper.kt
-app/src/main/java/dev/andikune/robotasisten/io/util/ValidationHelper.kt
-app/src/main/res/drawable/ic_bubble.xml
-app/src/main/res/drawable/ic_launcher_background.xml
-app/src/main/res/drawable/ic_launcher_foreground.xml
-app/src/main/res/drawable/ic_robot.xml
-app/src/main/res/drawable-nodpi/ic_launcher_art.png
-app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-app/src/main/res/mipmap-hdpi/ic_launcher.png
-app/src/main/res/mipmap-hdpi/ic_launcher_round.png
-app/src/main/res/mipmap-mdpi/ic_launcher.png
-app/src/main/res/mipmap-mdpi/ic_launcher_round.png
-app/src/main/res/mipmap-xhdpi/ic_launcher.png
-app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
-app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
-app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
-app/src/main/res/values/colors.xml
-app/src/main/res/values/strings.xml
-app/src/main/res/values/themes.xml
-app/src/main/res/values-in/strings.xml
-app/src/main/res/xml/accessibility_service_config.xml
-app/src/main/res/xml/backup_rules.xml
-app/src/main/res/xml/data_extraction_rules.xml
-
-FILE BUILD/REPOSITORY PENTING
-==============================
-settings.gradle.kts
-build.gradle.kts
-gradle.properties
-gradle/libs.versions.toml
-gradle/wrapper/gradle-wrapper.properties
-app/build.gradle.kts
-.github/workflows/android-build.yml
-app/proguard-rules.pro
-
-
-POHON REPOSITORY LENGKAP (tanpa cache/build lokal)
-==================================================
 .env.example
 .github/workflows/android-build.yml
 .gitignore
@@ -343,6 +208,7 @@ app/src/main/res/xml/data_extraction_rules.xml
 app/src/test/java/dev/andikune/robotasisten/io/QuestionDetectorTest.kt
 app/src/test/java/dev/andikune/robotasisten/io/data/ai/AiProviderConfigTest.kt
 app/src/test/java/dev/andikune/robotasisten/io/data/ai/AnswerTemplateTest.kt
+app/src/test/java/dev/andikune/robotasisten/io/ui/screens/HomeModeNormalizationTest.kt
 app/src/test/java/dev/andikune/robotasisten/io/util/ValidationHelperTest.kt
 build.gradle.kts
 gradle.properties
