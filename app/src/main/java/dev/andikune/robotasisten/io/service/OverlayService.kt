@@ -29,6 +29,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import dev.andikune.robotasisten.io.MainActivity
 import dev.andikune.robotasisten.io.R
 import dev.andikune.robotasisten.io.di.AppModule
+import dev.andikune.robotasisten.io.logic.AutoFillEngine
 import dev.andikune.robotasisten.io.logic.DetectedQuestion
 import dev.andikune.robotasisten.io.logic.QuestionDetector
 import dev.andikune.robotasisten.io.logic.ResolutionResult

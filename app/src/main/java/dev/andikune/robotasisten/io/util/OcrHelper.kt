@@ -14,7 +14,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 object OcrHelper {
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
-    @OptIn(InternalCoroutinesApi::class)
     suspend fun recognizeText(bitmap: Bitmap): Result<String> {
         return suspendCancellableCoroutine { continuation ->
             try {
@@ -33,6 +32,7 @@ object OcrHelper {
         }
     }
 
+    @OptIn(InternalCoroutinesApi::class)
     private fun <T> CancellableContinuation<T>.resumeSafely(value: T) {
         val token = tryResume(value) ?: return
         completeResume(token)
