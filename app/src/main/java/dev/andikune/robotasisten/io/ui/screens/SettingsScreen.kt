@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.Speed
@@ -57,7 +58,9 @@ fun SettingsScreen(
     onNavigateAbout: () -> Unit,
     onNavigatePrivacy: () -> Unit,
     onNavigateLicense: () -> Unit,
-    onNavigateDebug: () -> Unit
+    onNavigateDebug: () -> Unit,
+    onNavigateCrashReport: () -> Unit,
+    onNavigateSafeBackup: () -> Unit
 ) {
     val context = LocalContext.current
     val settingsRepo = AppModule.provideSettingsRepository(context)
@@ -230,6 +233,10 @@ fun SettingsScreen(
                     SettingsRow(title = "Tentang Aplikasi RELX.iO", icon = Icons.Default.Info, onClick = onNavigateAbout)
                     HorizontalDivider()
                     SettingsRow(title = "Kebijakan Privasi & Etika", icon = Icons.Default.Policy, onClick = onNavigatePrivacy)
+                    HorizontalDivider()
+                    SettingsRow(title = "Laporan Force Close", icon = Icons.Default.BugReport, onClick = onNavigateCrashReport)
+                    HorizontalDivider()
+                    SettingsRow(title = "Backup Aman (Dokumentasi Proyek .TXT)", icon = Icons.Default.Folder, onClick = onNavigateSafeBackup)
                     HorizontalDivider()
                     SettingsRow(title = "Debug Screen & Log", icon = Icons.Default.BugReport, onClick = onNavigateDebug)
                 }

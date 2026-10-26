@@ -126,6 +126,16 @@ fun PermissionChecklistScreen(
                     }
                 }
             )
+            Text(
+                text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    "Backup Aman menyimpan .TXT ke Penyimpanan internal/Relx IO/Backup aman menggunakan akses scoped Android. Tidak perlu izin akses seluruh penyimpanan."
+                } else {
+                    "Backup Aman meminta Anda memilih folder. Android memberi akses baca/tulis hanya ke folder yang dipilih; aplikasi tidak meminta akses seluruh penyimpanan."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp)
+            )
         }
     }
 }

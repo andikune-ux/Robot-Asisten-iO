@@ -152,21 +152,31 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         sizeDp = size,
                         opacity = opacity,
                         onTap = {
-                            performClickFeedback()
-                            if (currentAnalysis.value != null || currentAnswer.value != null || currentOcrText.value != null) {
-                                currentAnalysis.value = null
-                                currentAnswer.value = null
-                                currentOcrText.value = null
-                            } else {
-                                isMenuOpen.value = !isMenuOpen.value
+                            runCatching {
+                                performClickFeedback()
+                                if (currentAnalysis.value != null || currentAnswer.value != null || currentOcrText.value != null) {
+                                    currentAnalysis.value = null
+                                    currentAnswer.value = null
+                                    currentOcrText.value = null
+                                } else {
+                                    isMenuOpen.value = !isMenuOpen.value
+                                }
+                                updatePanelVisibility()
+                            }.onFailure { error ->
+                                LogHelper.e(TAG, "Bubble tap action failed", error)
+                                ToastHelper.showShort(this@OverlayService, "Bubble gagal dibuka: ${error.message ?: "lihat laporan crash"}")
                             }
-                            updatePanelVisibility()
                         },
                         onDoubleTap = { triggerAnalyze(autoAnswer = false) },
                         onLongPress = {
-                            performClickFeedback()
-                            isMenuOpen.value = true
-                            updatePanelVisibility()
+                            runCatching {
+                                performClickFeedback()
+                                isMenuOpen.value = true
+                                updatePanelVisibility()
+                            }.onFailure { error ->
+                                LogHelper.e(TAG, "Bubble long-press action failed", error)
+                                ToastHelper.showShort(this@OverlayService, "Menu overlay gagal dibuka")
+                            }
                         },
                         onDrag = { dx, dy ->
                             bubbleParams.x += dx.toInt()

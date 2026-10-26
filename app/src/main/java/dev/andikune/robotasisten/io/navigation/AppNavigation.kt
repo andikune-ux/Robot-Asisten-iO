@@ -7,6 +7,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.andikune.robotasisten.io.ui.screens.AboutScreen
 import dev.andikune.robotasisten.io.ui.screens.CloudModeScreen
+import dev.andikune.robotasisten.io.ui.screens.CrashReportScreen
 import dev.andikune.robotasisten.io.ui.screens.DebugScreen
 import dev.andikune.robotasisten.io.ui.screens.DiagnosticScreen
 import dev.andikune.robotasisten.io.ui.screens.HistoryScreen
@@ -17,6 +18,7 @@ import dev.andikune.robotasisten.io.ui.screens.OfflineModeScreen
 import dev.andikune.robotasisten.io.ui.screens.PermissionChecklistScreen
 import dev.andikune.robotasisten.io.ui.screens.PrivacyPolicyScreen
 import dev.andikune.robotasisten.io.ui.screens.SettingsScreen
+import dev.andikune.robotasisten.io.ui.screens.SafeBackupScreen
 
 object Routes {
     const val HOME = "home"
@@ -31,8 +33,10 @@ object Routes {
     const val PRIVACY = "privacy"
     const val LICENSE = "license"
     const val DEBUG = "debug"
+    const val CRASH_REPORT = "crash_report"
+    const val SAFE_BACKUP = "safe_backup"
 
-    val destinations = setOf(HOME, LIBRARY, OFFLINE, CLOUD, SETTINGS, HISTORY, PERMISSIONS, DIAGNOSTIC, ABOUT, PRIVACY, LICENSE, DEBUG)
+    val destinations = setOf(HOME, LIBRARY, OFFLINE, CLOUD, SETTINGS, HISTORY, PERMISSIONS, DIAGNOSTIC, ABOUT, PRIVACY, LICENSE, DEBUG, CRASH_REPORT, SAFE_BACKUP)
 }
 
 @Composable
@@ -94,7 +98,9 @@ fun AppNavigation(
                 onNavigateAbout = { navController.navigate(Routes.ABOUT) },
                 onNavigatePrivacy = { navController.navigate(Routes.PRIVACY) },
                 onNavigateLicense = { navController.navigate(Routes.LICENSE) },
-                onNavigateDebug = { navController.navigate(Routes.DEBUG) }
+                onNavigateDebug = { navController.navigate(Routes.DEBUG) },
+                onNavigateCrashReport = { navController.navigate(Routes.CRASH_REPORT) },
+                onNavigateSafeBackup = { navController.navigate(Routes.SAFE_BACKUP) }
             )
         }
 
@@ -138,6 +144,14 @@ fun AppNavigation(
             DebugScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
+        }
+
+        composable(Routes.CRASH_REPORT) {
+            CrashReportScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.SAFE_BACKUP) {
+            SafeBackupScreen(onNavigateBack = { navController.popBackStack() })
         }
     }
 }
