@@ -1,0 +1,6 @@
+{
+  "name": "R A . i O",
+  "description": "Asisten belajar dengan overlay robot mengambang cerdas (Mode Library, AI Offline, dan AI Open Key)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
