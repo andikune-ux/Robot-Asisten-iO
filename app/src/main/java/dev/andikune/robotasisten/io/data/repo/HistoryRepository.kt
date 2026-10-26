@@ -5,6 +5,7 @@ import dev.andikune.robotasisten.io.data.db.AppDatabase
 import dev.andikune.robotasisten.io.data.db.HistoryDao
 import dev.andikune.robotasisten.io.data.db.HistoryEntity
 import dev.andikune.robotasisten.io.data.db.StatsDao
+import dev.andikune.robotasisten.io.data.db.StatsEntity
 import kotlinx.coroutines.flow.Flow
 
 /**
