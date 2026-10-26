@@ -4,6 +4,54 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
 }
 
+val projectDocsAssetsDir = layout.buildDirectory.dir("generated/project-docs-assets")
+val projectDocsTemplate = layout.projectDirectory.file("src/main/project_docs/relx_project_handoff_template.txt")
+val generateProjectHandoff by tasks.registering {
+  val outputFile = projectDocsAssetsDir.map { it.file("relx_project_handoff.txt") }
+  notCompatibleWithConfigurationCache("Generates a fresh repository inventory for the user-facing project handoff document.")
+  inputs.file(projectDocsTemplate)
+  inputs.files(fileTree(rootProject.projectDir) {
+    exclude(".git/**", "**/.gradle/**", "**/.idea/**", "**/build/**", "**/node_modules/**")
+    exclude("local.properties", "**/local.properties", "**/secrets.properties", "**/*.jks", "**/*.keystore", "**/*.pem", "**/*.key", "**/.env", "**/.env.local")
+  })
+  outputs.file(outputFile)
+  doLast {
+    val root = rootProject.projectDir
+    val excludedDirectories = setOf(".git", ".gradle", ".idea", "build", "node_modules")
+    val inventory = root.walkTopDown()
+      .onEnter { directory -> directory.name !in excludedDirectories }
+      .filter { it.isFile }
+      .map { file -> root.toPath().relativize(file.toPath()).toString().replace('\\', '/') }
+      .filter { path ->
+        val name = path.substringAfterLast('/').lowercase()
+        path != "local.properties" && name !in setOf("secrets.properties", ".env", ".env.local") &&
+          !name.endsWith(".jks") && !name.endsWith(".keystore") && !name.endsWith(".pem") && !name.endsWith(".key") &&
+          !path.startsWith("app/build/") && !path.startsWith(".gradle/")
+      }
+      .sorted()
+      .toList()
+    val versionName = android.defaultConfig.versionName ?: "unknown"
+    val versionCode = android.defaultConfig.versionCode
+    val content = buildString {
+      val template = projectDocsTemplate.asFile.readText().replace(
+        "Versi build dokumen ini ditambahkan otomatis oleh Gradle dari konfigurasi aplikasi.",
+        "Versi build: $versionName / versionCode $versionCode"
+      )
+      append(template)
+      appendLine("\n\nBUILD-GENERATED REPOSITORY INVENTORY")
+      appendLine("====================================")
+      appendLine("Dibuat otomatis oleh Gradle untuk RELX.iO $versionName (versionCode $versionCode). Daftar ini diperbarui pada setiap build dari file yang ada di repository saat build dilakukan.")
+      appendLine("File kunci signing, konfigurasi rahasia/lokal, dan output build sengaja tidak dimasukkan.")
+      appendLine("\nFILE AKTUAL DI REPOSITORY (relatif terhadap root)")
+      appendLine("================================================")
+      inventory.forEach(::appendLine)
+    }
+    val destination = outputFile.get().asFile
+    destination.parentFile.mkdirs()
+    destination.writeText(content, Charsets.UTF_8)
+  }
+}
+
 android {
   namespace = "dev.andikune.robotasisten.io"
   compileSdk = 34
@@ -12,8 +60,8 @@ android {
     applicationId = "dev.andikune.robotasisten.io"
     minSdk = 26
     targetSdk = 34
-    versionCode = 5
-    versionName = "1.2.2"
+    versionCode = 6
+    versionName = "1.2.3"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -64,12 +112,16 @@ android {
     buildConfig = true
   }
 
+  sourceSets.getByName("main").assets.srcDir(projectDocsAssetsDir.get().asFile)
+
   testOptions {
     unitTests {
       isIncludeAndroidResources = true
     }
   }
 }
+
+tasks.named("preBuild").configure { dependsOn(generateProjectHandoff) }
 
 dependencies {
   implementation(platform("androidx.compose:compose-bom:2024.09.00"))

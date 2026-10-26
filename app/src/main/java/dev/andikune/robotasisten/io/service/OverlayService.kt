@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +39,7 @@ import dev.andikune.robotasisten.io.logic.AutoFillEngine
 import dev.andikune.robotasisten.io.logic.DetectedQuestion
 import dev.andikune.robotasisten.io.logic.QuestionDetector
 import dev.andikune.robotasisten.io.logic.ResolutionResult
+import dev.andikune.robotasisten.io.data.ai.RelxChatStore
 import dev.andikune.robotasisten.io.navigation.Routes
 import dev.andikune.robotasisten.io.ui.overlay.AnalysisPreviewCard
 import dev.andikune.robotasisten.io.ui.overlay.AnswerPreviewCard
@@ -45,6 +47,7 @@ import dev.andikune.robotasisten.io.ui.overlay.BubbleStatus
 import dev.andikune.robotasisten.io.ui.overlay.OverlayBubble
 import dev.andikune.robotasisten.io.ui.overlay.OverlayMenuPanel
 import dev.andikune.robotasisten.io.ui.overlay.OcrPreviewCard
+import dev.andikune.robotasisten.io.ui.overlay.PowerTaskPanel
 import dev.andikune.robotasisten.io.ui.theme.RAiOTheme
 import dev.andikune.robotasisten.io.util.ClipboardHelper
 import dev.andikune.robotasisten.io.util.Constants
@@ -84,6 +87,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private lateinit var panelParams: WindowManager.LayoutParams
     private val bubbleStatus = mutableStateOf(BubbleStatus.IDLE)
     private val isMenuOpen = mutableStateOf(false)
+    private val isPowerOpen = mutableStateOf(false)
+    private val isPanelDismissed = mutableStateOf(false)
+    private val powerPrompt = mutableStateOf("")
+    private val powerResult = mutableStateOf("")
+    private val powerStatus = mutableStateOf("")
+    private val isPowerBusy = mutableStateOf(false)
     private val currentAnalysis = mutableStateOf<DetectedQuestion?>(null)
     private val currentAnswer = mutableStateOf<ResolutionResult?>(null)
     private val currentOcrText = mutableStateOf<ScreenReadResult?>(null)
@@ -154,10 +163,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         onTap = {
                             runCatching {
                                 performClickFeedback()
-                                if (currentAnalysis.value != null || currentAnswer.value != null || currentOcrText.value != null) {
-                                    currentAnalysis.value = null
-                                    currentAnswer.value = null
-                                    currentOcrText.value = null
+                                if (currentAnalysis.value != null || currentAnswer.value != null || currentOcrText.value != null || isPowerOpen.value || powerResult.value.isNotBlank()) {
+                                    isPanelDismissed.value = !isPanelDismissed.value
+                                    if (isPowerOpen.value || powerResult.value.isNotBlank()) {
+                                        isPowerOpen.value = !isPanelDismissed.value
+                                        setPowerPanelFocusable(!isPanelDismissed.value)
+                                    }
                                 } else {
                                     isMenuOpen.value = !isMenuOpen.value
                                 }
@@ -241,14 +252,46 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             detectedQuestion = question,
                             onAnswerNow = { triggerAnswerNow(question) },
                             onReanalyze = { triggerAnalyze(autoAnswer = false) },
-                            onCancel = { clearResult() }
+                            onCancel = { clearResult() },
+                            isAnswering = bubbleStatus.value == BubbleStatus.ANSWERING
+                        )
+                        isPowerOpen.value || powerResult.value.isNotBlank() -> PowerTaskPanel(
+                            prompt = powerPrompt.value,
+                            result = powerResult.value,
+                            isBusy = isPowerBusy.value,
+                            status = powerStatus.value,
+                            onPromptChange = { powerPrompt.value = it },
+                            onConfirmTask = { triggerPowerAnalyze() },
+                            onAnalyzeAndAnswer = {
+                                isPowerOpen.value = false
+                                setPowerPanelFocusable(false)
+                                triggerAnalyze(autoAnswer = true)
+                            },
+                            onScrollUp = { requestPowerScroll(forward = false) },
+                            onScrollDown = { requestPowerScroll(forward = true) },
+                            onClose = {
+                                isPowerOpen.value = false
+                                setPowerPanelFocusable(false)
+                                isPanelDismissed.value = true
+                                updatePanelVisibility()
+                            }
                         )
                         isMenuOpen.value -> OverlayMenuPanel(
                             activeMode = activeMode,
                             confirmBeforeFill = confirmBeforeFill,
-                            onAnalyze = { triggerAnalyze(autoAnswer = false) },
+                            onAnalyze = { triggerAnalyze(autoAnswer = true) },
                             onAutoAnswer = { triggerAnalyze(autoAnswer = true) },
                             onOcrRead = { triggerReadOcr() },
+                            onOpenPower = {
+                                isMenuOpen.value = false
+                                isPowerOpen.value = true
+                                setPowerPanelFocusable(true)
+                                isPanelDismissed.value = false
+                                powerPrompt.value = ""
+                                powerResult.value = ""
+                                powerStatus.value = ""
+                                updatePanelVisibility()
+                            },
                             onOpenHistory = { isMenuOpen.value = false; updatePanelVisibility(); openApp(Routes.HISTORY) },
                             onOpenSettings = { isMenuOpen.value = false; updatePanelVisibility(); openApp(Routes.SETTINGS) },
                             onHideBubble = {
@@ -283,8 +326,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private fun updatePanelVisibility() {
         val manager = windowManager ?: return
         val panel = panelView ?: return
-        val showAnalysis = currentAnalysis.value != null && bubbleStatus.value != BubbleStatus.ANSWERING
-        val shouldShow = isMenuOpen.value || showAnalysis || currentAnswer.value != null || currentOcrText.value != null
+        val hasResult = currentAnalysis.value != null || currentAnswer.value != null || currentOcrText.value != null || powerResult.value.isNotBlank()
+        val shouldShow = !isPanelDismissed.value && (isMenuOpen.value || isPowerOpen.value || hasResult)
         try {
             if (shouldShow && panel.parent == null) {
                 manager.addView(panel, panelParams)
@@ -297,13 +340,27 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         }
     }
 
+    private fun setPowerPanelFocusable(focusable: Boolean) {
+        val panel = panelView ?: return
+        if (!::panelParams.isInitialized) return
+        val notFocusable = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        panelParams.flags = if (focusable) panelParams.flags and notFocusable.inv() else panelParams.flags or notFocusable
+        runCatching {
+            if (panel.parent != null) windowManager?.updateViewLayout(panel, panelParams)
+        }.onFailure { LogHelper.e(TAG, "Could not update Power input focus", it) }
+    }
+
     private fun triggerAnalyze(autoAnswer: Boolean) {
         operationJob?.cancel()
         val thisOperation = ++operationId
+        setPowerPanelFocusable(false)
         currentAnalysis.value = null
         currentAnswer.value = null
         currentOcrText.value = null
+        powerResult.value = ""
         isMenuOpen.value = false
+        isPowerOpen.value = false
+        isPanelDismissed.value = false
         updatePanelVisibility()
         bubbleStatus.value = BubbleStatus.ANALYZING
         performClickFeedback()
@@ -321,14 +378,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                     return@launch
                 }
 
-                if (!QuestionDetector.isLikelyQuestion(readResult.text)) {
-                    bubbleStatus.value = BubbleStatus.IDLE
-                    ToastHelper.showShort(this@OverlayService, "Teks terbaca, tetapi pola soal tidak terdeteksi. Gunakan menu Baca Teks Layar (OCR) untuk melihat atau menyalin teks.")
-                    updatePanelVisibility()
-                    return@launch
-                }
-
-                val detected = QuestionDetector.detect(readResult.text)
+                val likelyQuestion = QuestionDetector.isLikelyQuestion(readResult.text)
+                val detected = QuestionDetector.detect(readResult.text).copy(confidence = if (likelyQuestion) 0.9f else 0.45f)
                 currentAnalysis.value = detected
                 bubbleStatus.value = BubbleStatus.IDLE
                 updatePanelVisibility()
@@ -355,10 +406,14 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private fun triggerReadOcr() {
         operationJob?.cancel()
         val thisOperation = ++operationId
+        setPowerPanelFocusable(false)
         currentAnalysis.value = null
         currentAnswer.value = null
         currentOcrText.value = null
+        powerResult.value = ""
         isMenuOpen.value = false
+        isPowerOpen.value = false
+        isPanelDismissed.value = false
         updatePanelVisibility()
         bubbleStatus.value = BubbleStatus.ANALYZING
         operationJob = serviceScope.launch {
@@ -389,8 +444,14 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         if (PermissionHelper.isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) {
             accessibilityWasAvailable = true
             val previousVisibility = bubbleView?.visibility
+            val previousPanelVisibility = panelView?.visibility
             bubbleView?.visibility = View.GONE
+            panelView?.visibility = View.GONE
             try {
+                runCatching {
+                    val inputManager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    panelView?.windowToken?.let { inputManager.hideSoftInputFromWindow(it, 0) }
+                }
                 // Give WindowManager a frame to remove the overlay from the screenshot.
                 delay(180)
                 val result = CompletableDeferred<Result<String>>()
@@ -408,6 +469,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                 }
             } finally {
                 if (previousVisibility != null && bubbleView?.parent != null) bubbleView?.visibility = previousVisibility
+                if (previousPanelVisibility != null && panelView?.parent != null) panelView?.visibility = previousPanelVisibility
             }
         }
         val clipboardText = runCatching { ClipboardHelper.getClipboardText(this) }
@@ -417,6 +479,74 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         return clipboardText?.takeIf { it.isNotBlank() }?.let {
             ScreenReadResult(it, if (accessibilityWasAvailable) "Clipboard fallback" else "Clipboard")
         }
+    }
+
+    private fun triggerPowerAnalyze() {
+        if (isPowerBusy.value) return
+        isPowerBusy.value = true
+        powerResult.value = ""
+        powerStatus.value = "Membaca layar dan menyiapkan konteks…"
+        isPanelDismissed.value = false
+        updatePanelVisibility()
+        serviceScope.launch {
+            try {
+                val readResult = readScreenOrClipboard()
+                if (readResult == null || readResult.text.isBlank()) {
+                    powerStatus.value = "Tidak ada teks layar. Aktifkan Aksesibilitas RELX.iO atau salin teks terlebih dahulu."
+                    return@launch
+                }
+                val settings = AppModule.provideSettingsRepository(this@OverlayService)
+                val mode = settings.activeMode.value
+                if (mode.uppercase() !in setOf("AI_OFFLINE", "AI_OPEN_KEY")) {
+                    powerStatus.value = "Pilih AI Offline atau AI API Key sebagai mode aktif terlebih dahulu."
+                    return@launch
+                }
+                val profile = RelxChatStore(this@OverlayService).profile()
+                val task = powerPrompt.value.trim().ifBlank { "AUTO_LANGUAGE: Analyze the actual question/task visible on screen and suggest the next safe step in the language of that screen content." }
+                val prompt = buildString {
+                    appendLine("Tugas pengguna: $task")
+                    appendLine("Sumber konteks: ${readResult.source}")
+                    appendLine("Teks layar:")
+                    append(readResult.text.take(8_000))
+                    appendLine("\nBerikan analisa dan rencana yang jelas dalam bahasa yang sama dengan tugas pengguna. Jangan mengklaim telah melakukan aksi apa pun. Jangan menyuruh aplikasi menekan tombol Kirim/Submit, menghapus data, membayar, atau mengubah pengaturan tanpa konfirmasi manusia.")
+                }
+                val reply = AppModule.provideAiRepository(this@OverlayService).chatReply(
+                    mode = mode,
+                    history = emptyList(),
+                    userMessage = prompt,
+                    persona = profile.persona,
+                    memory = profile.memory,
+                    instructions = profile.instructions
+                )
+                if (reply.isNullOrBlank()) {
+                    powerResult.value = "AI tidak memberi hasil. Periksa model, provider, API key, jaringan, dan mode yang aktif."
+                    powerStatus.value = "Analisa gagal; belum ada saran tindakan."
+                } else {
+                    powerResult.value = reply
+                    powerStatus.value = "Analisa selesai. Scroll berikutnya hanya berjalan jika Anda menekan tombol scroll."
+                }
+            } catch (error: Exception) {
+                LogHelper.e(TAG, "RELX Power analysis failed", error)
+                powerStatus.value = "Analisa gagal: ${error.message ?: "coba lagi"}"
+            } finally {
+                isPowerBusy.value = false
+                updatePanelVisibility()
+            }
+        }
+    }
+
+    private fun requestPowerScroll(forward: Boolean) {
+        if (!PermissionHelper.isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) {
+            powerStatus.value = "Aktifkan Aksesibilitas RELX.iO terlebih dahulu."
+            ToastHelper.showShort(this, "Aksesibilitas RELX.iO belum aktif")
+            return
+        }
+        val accepted = MyAccessibilityService.scrollActiveWindowOnce(forward) { didScroll ->
+            powerStatus.value = if (didScroll) {
+                if (forward) "Layar digulir satu langkah ke bawah." else "Layar digulir satu langkah ke atas."
+            } else "Tidak ditemukan area layar yang dapat digulir."
+        }
+        if (!accepted) powerStatus.value = "Layanan aksesibilitas tidak tersambung. Buka checklist izin dan aktifkan kembali."
     }
 
     private fun triggerAnswerNow(question: DetectedQuestion) {
@@ -468,7 +598,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                 AutoFillResult.FILLED -> {
                     ToastHelper.showShort(this, "Jawaban dimasukkan ke kolom yang sedang fokus")
                     if (!isSilentModeEnabled()) HapticHelper.vibrateSuccess(this)
-                    clearResult()
+                    currentAnswer.value = currentAnswer.value?.copy(source = "Sudah diisi")
+                    updatePanelVisibility()
                 }
                 AutoFillResult.COPIED_TO_CLIPBOARD -> {
                     ToastHelper.showShort(this, "Jawaban disalin ke clipboard; tempel secara manual.")
@@ -491,6 +622,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         currentAnswer.value = null
         currentAnalysis.value = null
         currentOcrText.value = null
+        powerResult.value = ""
+        isPowerOpen.value = false
+        setPowerPanelFocusable(false)
+        isPanelDismissed.value = false
+        isMenuOpen.value = false
         bubbleStatus.value = BubbleStatus.IDLE
         updatePanelVisibility()
     }

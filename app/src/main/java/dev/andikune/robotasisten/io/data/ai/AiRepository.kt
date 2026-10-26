@@ -27,6 +27,35 @@ class AiRepository(
         return cloudAi.query(question, provider, model, settingsRepository.customBaseUrl.value)
     }
 
+    suspend fun chatReply(
+        mode: String,
+        history: List<Pair<String, String>>,
+        userMessage: String,
+        persona: String,
+        memory: String,
+        instructions: String
+    ): String? = when (mode.trim().uppercase()) {
+        "AI_OFFLINE", "OFFLINE" -> offlineAi.generateChatReply(
+            selectedModelName = settingsRepository.selectedOfflineModel.value,
+            history = history,
+            userMessage = userMessage,
+            persona = persona,
+            memory = memory,
+            instructions = instructions
+        )
+        "AI_OPEN_KEY", "CLOUD" -> cloudAi.queryConversation(
+            history = history,
+            userMessage = userMessage,
+            providerName = settingsRepository.selectedProvider.value,
+            modelName = settingsRepository.selectedModel.value,
+            customBaseUrl = settingsRepository.customBaseUrl.value,
+            persona = persona,
+            memory = memory,
+            instructions = instructions
+        )
+        else -> null
+    }
+
     suspend fun validateCloudKey(provider: String, key: String): Result<Boolean> {
         return cloudAi.validateApiKey(provider, key, settingsRepository.customBaseUrl.value)
     }

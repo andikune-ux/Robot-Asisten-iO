@@ -1,30 +1,25 @@
 package dev.andikune.robotasisten.io.data.ai
 
 import dev.andikune.robotasisten.io.logic.QuestionType
-import dev.andikune.robotasisten.io.util.Constants
 
-/**
- * Builds optimized prompts for multiple choice, calculation, fill in the blank, and essay questions.
- */
+/** Builds language-adaptive prompts for screen questions and study requests. */
 object PromptBuilder {
+    private const val SAME_LANGUAGE = "Detect the language used in the question and answer in that same language. Do not default to Indonesian if another language is used. "
 
     fun buildPrompt(question: String, type: QuestionType, options: List<String> = emptyList()): String {
         return when (type) {
             QuestionType.MULTIPLE_CHOICE -> {
                 val optionsText = if (options.isNotEmpty()) {
-                    "\nPilihan:\n" + options.mapIndexed { idx, opt -> "${('A' + idx)}. $opt" }.joinToString("\n")
+                    "\nOptions:\n" + options.mapIndexed { index, option -> "${'A' + index}. $option" }.joinToString("\n")
                 } else ""
-                "Pilihlah satu jawaban yang paling tepat untuk soal pilihan ganda berikut. Tuliskan HANYA huruf atau pilihan jawabannya secara ringkas tanpa basa-basi.\nSoal: $question$optionsText"
+                SAME_LANGUAGE + "Choose the most accurate option. State its label and answer text, then give a short reason. Do not answer unrelated screen/interface text.\nQuestion: $question$optionsText"
             }
-            QuestionType.CALCULATION -> {
-                "Selesaikan perhitungan matematika/sains berikut secara tepat. Berikan hasil akhirnya langsung, jika perlu sertakan 1 baris cara singkat.\nSoal: $question"
-            }
-            QuestionType.FILL_IN_THE_BLANK -> {
-                "Lengkapilah kalimat atau bagian rumpang pada soal berikut secara tepat dan singkat.\nSoal: $question"
-            }
-            QuestionType.ESSAY -> {
-                "${Constants.SYSTEM_PROMPT_ESSAY}$question"
-            }
+            QuestionType.CALCULATION -> SAME_LANGUAGE +
+                "Solve the math/science problem accurately. Show a concise calculation and the final result.\nQuestion: $question"
+            QuestionType.FILL_IN_THE_BLANK -> SAME_LANGUAGE +
+                "Complete the blank accurately and concisely.\nQuestion: $question"
+            QuestionType.ESSAY -> SAME_LANGUAGE +
+                "Answer clearly, directly, and proportionally to the question. Include necessary reasoning and be honest when context is insufficient.\nQuestion: $question"
         }
     }
 }

@@ -17,6 +17,7 @@ import dev.andikune.robotasisten.io.ui.screens.LicenseScreen
 import dev.andikune.robotasisten.io.ui.screens.OfflineModeScreen
 import dev.andikune.robotasisten.io.ui.screens.PermissionChecklistScreen
 import dev.andikune.robotasisten.io.ui.screens.PrivacyPolicyScreen
+import dev.andikune.robotasisten.io.ui.screens.RelxAiChatScreen
 import dev.andikune.robotasisten.io.ui.screens.SettingsScreen
 import dev.andikune.robotasisten.io.ui.screens.SafeBackupScreen
 
@@ -35,8 +36,9 @@ object Routes {
     const val DEBUG = "debug"
     const val CRASH_REPORT = "crash_report"
     const val SAFE_BACKUP = "safe_backup"
+    const val RELX_AI = "relx_ai"
 
-    val destinations = setOf(HOME, LIBRARY, OFFLINE, CLOUD, SETTINGS, HISTORY, PERMISSIONS, DIAGNOSTIC, ABOUT, PRIVACY, LICENSE, DEBUG, CRASH_REPORT, SAFE_BACKUP)
+    val destinations = setOf(HOME, LIBRARY, OFFLINE, CLOUD, SETTINGS, HISTORY, PERMISSIONS, DIAGNOSTIC, ABOUT, PRIVACY, LICENSE, DEBUG, CRASH_REPORT, SAFE_BACKUP, RELX_AI)
 }
 
 @Composable
@@ -65,6 +67,7 @@ fun AppNavigation(
             HomeScreen(
                 onNavigateSettings = { navController.navigate(Routes.SETTINGS) },
                 onNavigateHistory = { navController.navigate(Routes.HISTORY) },
+                onNavigateRelxAi = { navController.navigate(Routes.RELX_AI) },
                 onNavigateLibrary = { navController.navigate(Routes.LIBRARY) },
                 onNavigateOffline = { navController.navigate(Routes.OFFLINE) },
                 onNavigateCloud = { navController.navigate(Routes.CLOUD) },
@@ -152,6 +155,10 @@ fun AppNavigation(
 
         composable(Routes.SAFE_BACKUP) {
             SafeBackupScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.RELX_AI) {
+            RelxAiChatScreen(onNavigateBack = { navController.popBackStack() })
         }
     }
 }

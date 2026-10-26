@@ -1,0 +1,75 @@
+RELX.iO — PROJECT HANDOFF / BACKUP AMAN
+========================================
+
+TUJUAN BERKAS
+Dokumen ini adalah ringkasan teknis proyek untuk membantu pengembang atau AI assistant lain melanjutkan pekerjaan. Ini BUKAN backup/restore data pengguna. Berkas ini tidak berisi database, riwayat pengguna, API key, password, keystore, token GitHub, model offline, atau file privat perangkat.
+
+IDENTITAS BUILD
+Nama produk: RELX.iO
+Application ID: dev.andikune.robotasisten.io
+Bahasa implementasi utama: Kotlin
+UI: Jetpack Compose + Material 3
+Arsitektur utama: satu aplikasi Android, service foreground untuk overlay, Accessibility Service untuk tindakan layar atas permintaan, repository/Room untuk data lokal, adapter AI per mode.
+Minimum Android: API 26 (Android 8.0)
+Compile/target SDK saat dokumen sumber ini ditulis: 34
+Versi build dokumen ini ditambahkan otomatis oleh Gradle dari konfigurasi aplikasi.
+Sumber otoritatif proyek: repository GitHub andikune-ux/Robot-Asisten-iO, branch main. Periksa commit paling baru sebelum melakukan perubahan.
+
+GAMBARAN FITUR DAN ALUR
+1. Beranda memilih mode jawaban dan memeriksa izin sebelum memulai overlay.
+2. OverlayService menampilkan bubble robot dan panel Compose di atas aplikasi lain. Ketuk bubble membuka/menyembunyikan panel tanpa menghapus hasil; double tap meminta analisa+jawab; tekan lama membuka menu. Kartu soal/jawaban/OCR dibatasi tingginya dan dapat discroll; tombol Tutup menutup hasil secara eksplisit.
+3. MyAccessibilityService menjalankan screenshot/OCR atau fallback ke teks node aksesibilitas atas tindakan pengguna. Isi otomatis hanya mengisi field yang sedang fokus dan tidak mengirim pesan. RELX Power membaca layar atas konfirmasi, memberi rencana AI, dan hanya melakukan scroll satu langkah per tap pengguna; tidak menjalankan klik arbitrer/kirim/submit otomatis.
+4. QuestionDetector mengenali pola soal, opsi, isian, hitungan, dan esai. FallbackChain memilih cache/aturan/AI sesuai mode. Hasil gagal harus tampil sebagai status gagal, bukan jawaban tebakan.
+5. Mode Library memakai RuleEngine dan basis aturan lokal.
+6. Mode Offline menggunakan ModelDownloader untuk memperoleh model dan OfflineAi/MediaPipe untuk inferensi lokal. Prompt meminta model mengikuti bahasa dari soal/pesan pengguna secara otomatis; kualitas tetap dibatasi kemampuan model terunduh dan kompatibilitas perangkat.
+7. Mode Cloud memakai konfigurasi provider/model/endpoint HTTPS dan penyimpanan rahasia ApiKeyStore. Jangan pernah menaruh API key dalam source, log, atau berkas Backup Aman.
+8. Room menyimpan cache, aturan, riwayat, statistik, dan antrean AI. SettingsRepository menyimpan pengaturan aplikasi.
+9. CrashHandler menulis laporan exception fatal terakhir ke penyimpanan privat aplikasi. Saat aplikasi dibuka kembali, MainActivity menampilkan dialog untuk menyalin log dan kembali. Jika dialog ditutup, log masih dapat diakses dari Debug/Crash Report sampai pengguna menghapusnya.
+10. Backup Aman mengekspor dokumen teks ini, info runtime tidak rahasia, dan inventaris repository aktual. Inventaris dihasilkan otomatis pada setiap build oleh task Gradle dari struktur/file yang ada; file kunci, secrets, data privat, dan output build dikecualikan. Android 10+ membuat .txt di Penyimpanan internal/Relx IO/Backup aman melalui MediaStore.Files scoped; Android 8–9 memakai SAF dengan grant terbatas. Fitur ini tidak mengekspor atau memulihkan data aplikasi.
+11. RELX AI adalah halaman chat multi-turn untuk AI Offline atau AI API Key. Riwayat beberapa percakapan, persona, memory/knowledge, dan instruction disimpan lokal; konteks percakapan dibatasi untuk permintaan model. Saat mode cloud dipakai, pesan, layar yang dikirim melalui RELX Power, dan memory yang dipilih dikirim ke provider API aktif; jangan masukkan rahasia.
+
+PERIZINAN ANDROID
+- SYSTEM_ALERT_WINDOW: menampilkan overlay setelah pengguna mengaktifkan izin khusus Android.
+- FOREGROUND_SERVICE dan FOREGROUND_SERVICE_SPECIAL_USE: service overlay berjalan sebagai foreground service dan menampilkan notifikasi berkelanjutan.
+- POST_NOTIFICATIONS: kontrol service dan status notifikasi pada Android yang mensyaratkan persetujuan.
+- INTERNET dan ACCESS_NETWORK_STATE: mode cloud serta pemantauan koneksi.
+- REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: pilihan agar sistem tidak mudah menghentikan overlay.
+- BIND_ACCESSIBILITY_SERVICE: Android mengikat service aksesibilitas; pengguna mengaktifkannya sendiri melalui Settings.
+- VIBRATE: feedback getar; implementasi harus tetap fail-safe bila hardware/izin bermasalah.
+- Backup Aman tidak meminta MANAGE_EXTERNAL_STORAGE atau READ/WRITE_EXTERNAL_STORAGE. Android 10+ menulis berkas milik aplikasi memakai MediaStore.Files dengan RELATIVE_PATH “Relx IO/Backup aman”; Android 8–9 menggunakan ACTION_OPEN_DOCUMENT_TREE dengan grant URI terbatas/persistable. Tidak ada akses diam-diam ke seluruh file.
+
+PETA KODE SUMBER
+app/src/main/AndroidManifest.xml — identitas aplikasi, permissions, activity dan service.
+app/src/main/java/dev/andikune/robotasisten/io/MainActivity.kt — Activity utama, navigasi deep-link internal, dialog laporan crash.
+app/src/main/java/dev/andikune/robotasisten/io/RAiOApp.kt — inisialisasi Hilt dan crash handler saat proses dibuat.
+app/src/main/java/dev/andikune/robotasisten/io/data/ai/ — adapter AI, konfigurasi provider, library, cloud, model offline, prompt, downloader, fallback answer, penyimpanan chat lokal.
+app/src/main/java/dev/andikune/robotasisten/io/data/db/ — Room database, entities, DAOs untuk cache, history, rules, statistik, dan antrean.
+app/src/main/java/dev/andikune/robotasisten/io/data/repo/ — repository history, aturan dan pengaturan aplikasi.
+app/src/main/java/dev/andikune/robotasisten/io/data/security/ — penyimpanan API key dengan Android Keystore.
+app/src/main/java/dev/andikune/robotasisten/io/di/AppModule.kt — penyediaan database, repositories, AI adapters dan dependency graph.
+app/src/main/java/dev/andikune/robotasisten/io/logic/ — antrean panggilan AI, cache matcher, capture strategy, autofill, fallback, deteksi soal, rule engine, screen state.
+app/src/main/java/dev/andikune/robotasisten/io/navigation/AppNavigation.kt — route dan wiring antar-screen.
+app/src/main/java/dev/andikune/robotasisten/io/service/ — OverlayService, MyAccessibilityService, QuickSettingsTile, notification helper, cleanup worker.
+app/src/main/java/dev/andikune/robotasisten/io/ui/components/ — komponen UI reusable.
+app/src/main/java/dev/andikune/robotasisten/io/ui/overlay/ — bubble, menu overlay, RELX Power, kartu hasil analisa/jawaban/OCR yang bisa discroll, dan status.
+app/src/main/java/dev/andikune/robotasisten/io/ui/screens/ — Home, RELX AI chat, mode Library/Offline/Cloud, Pengaturan, Permission, Diagnostic, Debug, History, About, Privacy, License, onboarding.
+app/src/main/java/dev/andikune/robotasisten/io/ui/theme/ — warna, typography, Material theme.
+app/src/main/java/dev/andikune/robotasisten/io/util/ — helper clipboard, logging, crash, permission, OCR, jaringan, filesystem, cache, haptic/audio, validasi, backup format lama.
+app/src/main/res/drawable/ dan mipmap*/ — vector, adaptive launcher icon dan raster launcher icon.
+app/src/main/res/values*/ — strings, warna, tema dan terjemahan Indonesia.
+app/src/main/res/xml/ — konfigurasi accessibility dan aturan Android backup/data extraction.
+app/src/test/ — unit test logika dan regresi.
+.github/workflows/android-build.yml — workflow unit tests, signing dengan key stabil dari GitHub Actions secrets, build APK dan upload artifact.
+
+PETUNJUK MELANJUTKAN PROYEK
+- Sebelum mengedit, periksa git status, branch dan commit terkini; buat perubahan sekecil mungkin.
+- Jangan menghapus/mengganti applicationId jika APK harus menjadi update terhadap aplikasi yang sudah terpasang.
+- APK yang ditandatangani key berbeda tidak dapat memasang update di atas APK lama. Pertahankan secrets signing yang sudah dikonfigurasi; jangan membuat key pengganti.
+- Jangan commit keystore, API keys, nilai secrets, data pengguna, atau file build.
+- Jalankan ./gradlew testDebugUnitTest assembleDebug (workflow menguji test dan membuat artifact bertanda tangan stabil).
+- Periksa laporan crash nyata sebelum menyimpulkan akar masalah. Laporan ada di dialog awal setelah force close atau halaman Crash Report.
+- Untuk Backup Aman, gunakan MediaStore.Files pada Android 10+ untuk path “Relx IO/Backup aman” dan SAF dengan persistable URI grant sebagai fallback Android 8–9. Hindari izin storage luas.
+- Bagian file aktual di akhir dokumen dihasilkan otomatis oleh Gradle pada build. Deskripsi arsitektur di template ini perlu ditinjau bila behavior utama berubah. Verifikasi commit dan isi file sebelum menjadikannya spesifikasi final.
+
+CATATAN PRIVASI
+Laporan crash memuat stack trace, model perangkat, versi Android, versi aplikasi, waktu, dan nama thread. Jangan menambahkan isi layar, clipboard, API key, password, atau rahasia ke laporan. File Backup Aman berupa teks plain; pengguna sebaiknya membagikannya hanya kepada pihak yang dipercaya.

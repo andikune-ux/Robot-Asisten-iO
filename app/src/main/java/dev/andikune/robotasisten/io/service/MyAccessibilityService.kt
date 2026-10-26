@@ -12,6 +12,7 @@ import android.os.Looper
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import dev.andikune.robotasisten.io.util.LogHelper
 import dev.andikune.robotasisten.io.util.OcrHelper
 import kotlinx.coroutines.CoroutineScope
@@ -128,7 +129,7 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     private fun readActiveWindowText(): String {
-        val root = rootInActiveWindow ?: return ""
+        val root = targetApplicationRoot() ?: return ""
         val collected = LinkedHashSet<String>()
         collectNodeText(root, collected, depth = 0)
         return collected.joinToString("\n").take(MAX_CAPTURE_CHARS)
@@ -149,13 +150,46 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     private fun fillFocusedText(text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
+        val root = targetApplicationRoot() ?: return false
         val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
         if (!focused.isEditable) return false
         val arguments = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+    }
+
+    private fun scrollActiveWindowOnce(forward: Boolean): Boolean {
+        val root = targetApplicationRoot() ?: return false
+        return runCatching { findScrollableAndScroll(root, forward, depth = 0) }.getOrDefault(false)
+    }
+
+    private fun targetApplicationRoot(): AccessibilityNodeInfo? {
+        val active = rootInActiveWindow
+        if (active != null && active.packageName?.toString() != packageName) return active
+        return runCatching {
+            windows.asSequence()
+                .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+                .mapNotNull { it.root }
+                .firstOrNull { it.packageName?.toString() != packageName }
+        }.getOrNull() ?: active
+    }
+
+    private fun findScrollableAndScroll(node: AccessibilityNodeInfo, forward: Boolean, depth: Int): Boolean {
+        if (depth > MAX_NODE_DEPTH) return false
+        if (node.isScrollable) {
+            val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            if (node.performAction(action)) return true
+        }
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            try {
+                if (findScrollableAndScroll(child, forward, depth + 1)) return true
+            } finally {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) child.recycle()
+            }
+        }
+        return false
     }
 
     private val mainHandlerExecutor = java.util.concurrent.Executor { command -> mainHandler.post(command) }
@@ -181,6 +215,15 @@ class MyAccessibilityService : AccessibilityService() {
             val service = connectedService ?: return false
             service.mainHandler.post {
                 callback(runCatching { service.fillFocusedText(text) }.getOrDefault(false))
+            }
+            return true
+        }
+
+        /** Scrolls one accessible container only after a direct user tap in RELX Power. */
+        fun scrollActiveWindowOnce(forward: Boolean, callback: (Boolean) -> Unit): Boolean {
+            val service = connectedService ?: return false
+            service.mainHandler.post {
+                callback(runCatching { service.scrollActiveWindowOnce(forward) }.getOrDefault(false))
             }
             return true
         }

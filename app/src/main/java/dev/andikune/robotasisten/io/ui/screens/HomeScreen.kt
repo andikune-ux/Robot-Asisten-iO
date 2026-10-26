@@ -95,6 +95,7 @@ import java.util.Locale
 fun HomeScreen(
     onNavigateSettings: () -> Unit,
     onNavigateHistory: () -> Unit,
+    onNavigateRelxAi: () -> Unit,
     onNavigateLibrary: () -> Unit,
     onNavigateOffline: () -> Unit,
     onNavigateCloud: () -> Unit,
@@ -131,6 +132,12 @@ fun HomeScreen(
                     onClick = { /* Already on Home */ },
                     icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
                     label = { Text("Home") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onNavigateRelxAi,
+                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "RELX AI") },
+                    label = { Text("RELX AI") }
                 )
                 NavigationBarItem(
                     selected = false,
@@ -667,6 +674,7 @@ fun HomeScreenPreview() {
             HomeScreen(
                 onNavigateSettings = {},
                 onNavigateHistory = {},
+                onNavigateRelxAi = {},
                 onNavigateLibrary = {},
                 onNavigateOffline = {},
                 onNavigateCloud = {},

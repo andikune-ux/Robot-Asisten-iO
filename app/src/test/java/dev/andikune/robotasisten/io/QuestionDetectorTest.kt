@@ -45,4 +45,19 @@ class QuestionDetectorTest {
         assertEquals(true, QuestionDetector.isLikelyQuestion("Apa ibu kota Indonesia?"))
         assertEquals(true, QuestionDetector.isLikelyQuestion("Hitunglah 15 * 4"))
     }
+
+    @Test fun screenAnalysisFocusesOnQuestionAndOptionsInsteadOfNavigationNoise() {
+        val detected = QuestionDetector.detect(
+            "RELX AI\nHome\nBeranda\nBab 1: Geography\nWhat is the capital of France?\nA. Paris\nB. Rome\nC. Madrid"
+        )
+        assertEquals(QuestionType.MULTIPLE_CHOICE, detected.type)
+        org.junit.Assert.assertTrue(detected.questionText.contains("What is the capital of France?"))
+        assertEquals(listOf("Paris", "Rome", "Madrid"), detected.options)
+        org.junit.Assert.assertFalse(detected.questionText.contains("Beranda"))
+    }
+
+    @Test fun commonEnglishQuestionWithoutPunctuationIsDetected() {
+        assertEquals(true, QuestionDetector.isLikelyQuestion("What is the capital of France"))
+        assertEquals(true, QuestionDetector.detect("What is the capital of France").questionText.contains("capital of France"))
+    }
 }

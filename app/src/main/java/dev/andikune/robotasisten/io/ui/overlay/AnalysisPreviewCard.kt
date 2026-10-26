@@ -6,16 +6,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -36,20 +40,15 @@ fun AnalysisPreviewCard(
     onAnswerNow: () -> Unit,
     onReanalyze: () -> Unit,
     onCancel: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isAnswering: Boolean = false
 ) {
     val hasExamWarning = SanitizerHelper.containsExamKeyword(detectedQuestion.questionText)
-
     Card(
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-        modifier = modifier
-            .width(300.dp)
-            .shadow(8.dp, RoundedCornerShape(18.dp))
-            .testTag("analysis_preview_card")
+        modifier = modifier.width(300.dp).heightIn(max = 520.dp).shadow(8.dp, RoundedCornerShape(18.dp)).testTag("analysis_preview_card")
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -57,84 +56,42 @@ fun AnalysisPreviewCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "🔍 Hasil Analisa Layar",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = detectedQuestion.type.name.replace("_", " "),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text("🔍 Hasil Analisa Layar", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(detectedQuestion.type.name.replace("_", " "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = detectedQuestion.questionText.take(180) + if (detectedQuestion.questionText.length > 180) "..." else "",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            if (detectedQuestion.options.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Opsi terdeteksi (${detectedQuestion.options.size}): " +
-                            detectedQuestion.options.take(3).joinToString("; "),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (hasExamWarning) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = WarningAmber,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Terdeteksi kata ujian/ulangan. Gunakan beretika.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = WarningAmber
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+            Spacer(Modifier.height(8.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 330.dp).verticalScroll(rememberScrollState())
             ) {
-                OutlinedButton(
-                    onClick = onCancel,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.padding(end = 6.dp)
-                ) {
-                    Text("Batal", style = MaterialTheme.typography.labelSmall)
+                Text("Soal terdeteksi", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text(detectedQuestion.questionText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                if (detectedQuestion.options.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Opsi jawaban:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    detectedQuestion.options.forEachIndexed { index, option ->
+                        Text("${'A' + index}. $option", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
+                    }
                 }
-
-                OutlinedButton(
-                    onClick = onReanalyze,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.padding(end = 6.dp)
-                ) {
-                    Text("Ulang", style = MaterialTheme.typography.labelSmall)
+                if (hasExamWarning) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Terdeteksi kata ujian/ulangan. Gunakan beretika.", style = MaterialTheme.typography.labelSmall, color = WarningAmber)
+                    }
                 }
-
-                Button(
-                    onClick = onAnswerNow,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("⚡ Jawab", style = MaterialTheme.typography.labelSmall)
-                }
+            }
+            if (isAnswering) {
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text("RELX AI sedang menyiapkan jawaban…", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                OutlinedButton(onClick = onCancel, modifier = Modifier.padding(end = 5.dp)) { Text("Tutup", style = MaterialTheme.typography.labelSmall) }
+                OutlinedButton(onClick = onReanalyze, modifier = Modifier.padding(end = 5.dp)) { Text("Ulang", style = MaterialTheme.typography.labelSmall) }
+                Button(onClick = onAnswerNow, enabled = !isAnswering) { Text(if (isAnswering) "Proses…" else "⚡ Jawab", style = MaterialTheme.typography.labelSmall) }
             }
         }
     }

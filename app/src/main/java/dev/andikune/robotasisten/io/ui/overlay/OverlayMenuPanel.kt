@@ -1,12 +1,15 @@
 package dev.andikune.robotasisten.io.ui.overlay
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +41,7 @@ fun OverlayMenuPanel(
     onAnalyze: () -> Unit,
     onAutoAnswer: () -> Unit,
     onOcrRead: () -> Unit,
+    onOpenPower: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
     onHideBubble: () -> Unit,
@@ -56,7 +60,7 @@ fun OverlayMenuPanel(
             .shadow(8.dp, RoundedCornerShape(20.dp))
             .testTag("overlay_menu_panel")
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(14.dp).heightIn(max = 620.dp).verticalScroll(rememberScrollState())) {
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -106,6 +110,7 @@ fun OverlayMenuPanel(
                 onClick = onAutoAnswer
             )
             MenuItemRow(title = "📸 Baca Teks Layar (OCR)", onClick = onOcrRead)
+            MenuItemRow(title = "⚡ RELX Power", onClick = onOpenPower)
             MenuItemRow(title = "📜 Riwayat", onClick = onOpenHistory)
             MenuItemRow(title = "⚙️ Pengaturan", onClick = onOpenSettings)
             MenuItemRow(title = "👁 Sembunyikan Bubble", onClick = onHideBubble)
