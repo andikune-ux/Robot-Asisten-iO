@@ -1,15 +1,17 @@
 package dev.andikune.robotasisten.io.data.repo
 
+import androidx.room.withTransaction
+import dev.andikune.robotasisten.io.data.db.AppDatabase
 import dev.andikune.robotasisten.io.data.db.HistoryDao
 import dev.andikune.robotasisten.io.data.db.HistoryEntity
 import dev.andikune.robotasisten.io.data.db.StatsDao
-import dev.andikune.robotasisten.io.data.db.StatsEntity
 import kotlinx.coroutines.flow.Flow
 
 /**
  * Repository for storing solved questions history and tracking telemetry/stats.
  */
 class HistoryRepository(
+    private val database: AppDatabase,
     private val historyDao: HistoryDao,
     private val statsDao: StatsDao
 ) {
@@ -25,27 +27,19 @@ class HistoryRepository(
         questionType: String,
         isCacheHit: Boolean = false
     ) {
-        historyDao.insertHistory(
-            HistoryEntity(
-                question = question,
-                answer = answer,
-                mode = mode,
-                questionType = questionType,
-                timestamp = System.currentTimeMillis()
+        val timestamp = System.currentTimeMillis()
+        database.withTransaction {
+            historyDao.insertHistory(
+                HistoryEntity(
+                    question = question,
+                    answer = answer,
+                    mode = mode,
+                    questionType = questionType,
+                    timestamp = timestamp
+                )
             )
-        )
-
-        val current = statsDao.getStatsDirect() ?: StatsEntity()
-        val updated = current.copy(
-            totalQuestions = current.totalQuestions + 1,
-            libraryCount = if (mode.equals("LIBRARY", true)) current.libraryCount + 1 else current.libraryCount,
-            offlineCount = if (mode.equals("OFFLINE", true)) current.offlineCount + 1 else current.offlineCount,
-            cloudCount = if (mode.equals("CLOUD", true) || mode.equals("OPEN_KEY", true)) current.cloudCount + 1 else current.cloudCount,
-            cacheHits = if (isCacheHit) current.cacheHits + 1 else current.cacheHits,
-            dailyQuotaUsed = if (mode.equals("CLOUD", true) || mode.equals("OPEN_KEY", true)) current.dailyQuotaUsed + 1 else current.dailyQuotaUsed,
-            lastUpdated = System.currentTimeMillis()
-        )
-        statsDao.insertOrUpdate(updated)
+            statsDao.recordUsage(mode, isCacheHit, timestamp)
+        }
     }
 
     suspend fun deleteById(id: Long) = historyDao.deleteById(id)

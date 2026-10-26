@@ -75,7 +75,7 @@ object AppModule {
     fun provideHistoryRepository(context: Context): HistoryRepository {
         return historyRepository ?: synchronized(this) {
             val db = provideDatabase(context)
-            historyRepository ?: HistoryRepository(db.historyDao(), db.statsDao()).also { historyRepository = it }
+            historyRepository ?: HistoryRepository(db, db.historyDao(), db.statsDao()).also { historyRepository = it }
         }
     }
 
