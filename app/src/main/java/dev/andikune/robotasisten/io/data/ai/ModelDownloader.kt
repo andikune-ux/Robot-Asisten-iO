@@ -32,7 +32,8 @@ data class OfflineModelSpec(
     val downloadUrl: String,
     val sha256: String,
     val capability: String,
-    val recommendedRamText: String
+    val recommendedRamText: String,
+    val promptStyle: String = "QWEN_CHATML"
 )
 
 class ModelDownloader(private val context: Context) {
@@ -58,6 +59,18 @@ class ModelDownloader(private val context: Context) {
             sha256 = MODEL_15B_SHA256,
             capability = "Lebih kuat untuk instruksi panjang, penalaran, dan penjelasan; respons lebih lambat dan memerlukan lebih banyak RAM.",
             recommendedRamText = "Sediakan kira-kira 2.5 GB RAM bebas dan 1.75 GB ruang kosong sebelum unduh."
+        ),
+        OfflineModelSpec(
+            id = MODEL_TINYLLAMA_ID,
+            name = "TinyLlama 1.1B Chat · alternatif",
+            sizeText = "1.15 GB",
+            sizeBytes = MODEL_TINYLLAMA_SIZE_BYTES,
+            filename = MODEL_TINYLLAMA_FILENAME,
+            downloadUrl = MODEL_TINYLLAMA_URL,
+            sha256 = MODEL_TINYLLAMA_SHA256,
+            capability = "Model alternatif non-Qwen untuk chat umum dan instruksi singkat; membutuhkan ruang dan RAM lebih besar.",
+            recommendedRamText = "Sediakan kira-kira 2 GB RAM bebas dan 1.3 GB ruang kosong sebelum unduh.",
+            promptStyle = "TINYLLAMA_CHAT"
         )
     )
 
@@ -279,6 +292,11 @@ class ModelDownloader(private val context: Context) {
         const val MODEL_15B_FILENAME = "Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv1280.task"
         const val MODEL_15B_SHA256 = "8d867a7c93a6acf2892f08e0174e2f6f351ad256b7e3cfb6d6cd9c89794b42e0"
         const val MODEL_15B_URL = "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv1280.task"
+        const val MODEL_TINYLLAMA_ID = "tinyllama-1.1b-chat-mediapipe-q8"
+        const val MODEL_TINYLLAMA_SIZE_BYTES = 1_148_331_545L
+        const val MODEL_TINYLLAMA_FILENAME = "TinyLlama-1.1B-Chat-v1.0_multi-prefill-seq_q8_ekv1280.task"
+        const val MODEL_TINYLLAMA_SHA256 = "0f09dc7f792bb8d49b6629effaee3ed1a99e4506b082cd353471bdf391dee053"
+        const val MODEL_TINYLLAMA_URL = "https://huggingface.co/litert-community/TinyLlama-1.1B-Chat-v1.0/resolve/main/TinyLlama-1.1B-Chat-v1.0_multi-prefill-seq_q8_ekv1280.task"
         private const val HTTP_RANGE_NOT_SATISFIABLE = 416
     }
 }

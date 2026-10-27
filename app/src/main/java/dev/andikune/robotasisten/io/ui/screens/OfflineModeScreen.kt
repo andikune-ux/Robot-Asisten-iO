@@ -46,10 +46,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.andikune.robotasisten.io.data.ai.OfflineModelSpec
 import dev.andikune.robotasisten.io.di.AppModule
+import dev.andikune.robotasisten.io.service.OfflineModelDownloadHelper
 import dev.andikune.robotasisten.io.ui.theme.SuccessGreen
 import dev.andikune.robotasisten.io.util.DeviceHelper
 import dev.andikune.robotasisten.io.util.ToastHelper
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,27 +74,9 @@ fun OfflineModeScreen(onNavigateBack: () -> Unit) {
         if (downloadingModelId != null) return
         downloadingModelId = model.id
         failedModelIds = failedModelIds - model.id
-        scope.launch {
-            try {
-                downloader.startDownload(model) { success ->
-                    if (success) {
-                        settingsRepo.setSelectedOfflineModel(model.id)
-                        failedModelIds = failedModelIds - model.id
-                        ToastHelper.showShort(context, "Model berhasil diunduh, diverifikasi, dan diaktifkan")
-                    } else {
-                        failedModelIds = failedModelIds + model.id
-                        ToastHelper.showShort(context, "Unduhan gagal. Tekan Coba Lagi untuk melanjutkan data yang tersimpan.")
-                    }
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                failedModelIds = failedModelIds + model.id
-                ToastHelper.showShort(context, "Unduhan gagal: ${error.message ?: "coba lagi"}")
-            } finally {
-                downloadingModelId = null
-            }
-        }
+        OfflineModelDownloadHelper.enqueue(context, model)
+        downloadingModelId = null
+        ToastHelper.showShort(context, "Unduhan berjalan di latar belakang dan tetap dilanjutkan saat aplikasi ditutup")
     }
 
     Scaffold(topBar = {
@@ -204,6 +186,7 @@ fun OfflineModeScreen(onNavigateBack: () -> Unit) {
                 Button(onClick = {
                     pendingDelete = null
                     scope.launch {
+                        OfflineModelDownloadHelper.cancel(context, model)
                         if (deletingActiveModel) {
                             settingsRepo.setSelectedOfflineModel("")
                             AppModule.provideOfflineAi(context).releaseCachedEngine()

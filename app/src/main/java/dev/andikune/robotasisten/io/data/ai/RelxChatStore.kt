@@ -26,6 +26,18 @@ data class RelxChatProfile(
     val reasoningDepth: String = "balanced"
 )
 
+data class RelxPendingChatRequest(
+    val conversationId: String,
+    val mode: String,
+    val history: List<Pair<String, String>>,
+    val userMessage: String,
+    val pendingMessages: List<RelxChatMessage>,
+    val persona: String,
+    val memory: String,
+    val instructions: String,
+    val reasoningDepth: String
+)
+
 /** Local-only chat history and profile settings. Never included in project documentation export. */
 class RelxChatStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("relx_ai_chat", Context.MODE_PRIVATE)
@@ -96,6 +108,48 @@ class RelxChatStore(context: Context) {
         }
     }
 
+    fun savePendingRequest(request: RelxPendingChatRequest) {
+        val json = JSONObject().apply {
+            put("conversationId", request.conversationId)
+            put("mode", request.mode)
+            put("userMessage", request.userMessage)
+            put("persona", request.persona)
+            put("memory", request.memory)
+            put("instructions", request.instructions)
+            put("reasoningDepth", request.reasoningDepth)
+            put("history", JSONArray().apply {
+                request.history.forEach { (role, content) ->
+                    put(JSONObject().put("role", role).put("content", content))
+                }
+            })
+            put("pendingMessages", encodeMessages(request.pendingMessages))
+        }
+        prefs.edit().putString(KEY_PENDING_REQUEST, json.toString()).apply()
+    }
+
+    fun pendingRequest(): RelxPendingChatRequest? = runCatching {
+        val json = JSONObject(prefs.getString(KEY_PENDING_REQUEST, null) ?: return null)
+        val historyJson = json.optJSONArray("history") ?: JSONArray()
+        val history = (0 until historyJson.length()).mapNotNull { index ->
+            historyJson.optJSONObject(index)?.let { it.optString("role") to it.optString("content") }
+        }
+        RelxPendingChatRequest(
+            conversationId = json.getString("conversationId"),
+            mode = json.getString("mode"),
+            history = history,
+            userMessage = json.getString("userMessage"),
+            pendingMessages = decodeMessages(json.optJSONArray("pendingMessages") ?: JSONArray()),
+            persona = json.optString("persona"),
+            memory = json.optString("memory"),
+            instructions = json.optString("instructions"),
+            reasoningDepth = json.optString("reasoningDepth", "balanced")
+        )
+    }.getOrNull()
+
+    fun clearPendingRequest() {
+        prefs.edit().remove(KEY_PENDING_REQUEST).apply()
+    }
+
     private fun persist(conversations: List<RelxConversation>) {
         val json = JSONArray()
         conversations.sortedByDescending { it.updatedAt }.take(MAX_CONVERSATIONS).forEach { conversation ->
@@ -103,37 +157,42 @@ class RelxChatStore(context: Context) {
                 put("id", conversation.id)
                 put("title", conversation.title)
                 put("updatedAt", conversation.updatedAt)
-                put("messages", JSONArray().apply {
-                    conversation.messages.takeLast(MAX_MESSAGES).forEach { message ->
-                        put(JSONObject().apply {
-                            put("id", message.id)
-                            put("role", message.role)
-                            put("content", message.content)
-                            put("createdAt", message.createdAt)
-                        })
-                    }
-                })
+                put("messages", encodeMessages(conversation.messages))
             })
         }
         prefs.edit().putString(KEY_CONVERSATIONS, json.toString()).apply()
     }
+
+    private fun encodeMessages(messages: List<RelxChatMessage>): JSONArray = JSONArray().apply {
+        messages.takeLast(MAX_MESSAGES).forEach { message ->
+            put(JSONObject().apply {
+                put("id", message.id)
+                put("role", message.role)
+                put("content", message.content)
+                put("createdAt", message.createdAt)
+            })
+        }
+    }
+
+    private fun decodeMessages(messagesJson: JSONArray): List<RelxChatMessage> =
+        (0 until messagesJson.length()).mapNotNull { messageIndex ->
+            val message = messagesJson.optJSONObject(messageIndex) ?: return@mapNotNull null
+            val role = message.optString("role")
+            if (role != ROLE_USER && role != ROLE_ASSISTANT) return@mapNotNull null
+            RelxChatMessage(
+                id = message.optString("id", UUID.randomUUID().toString()),
+                role = role,
+                content = message.optString("content"),
+                createdAt = message.optLong("createdAt")
+            )
+        }
 
     private fun decodeConversations(): List<RelxConversation> = runCatching {
         val array = JSONArray(prefs.getString(KEY_CONVERSATIONS, "[]"))
         (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
             val messagesJson = item.optJSONArray("messages") ?: JSONArray()
-            val messages = (0 until messagesJson.length()).mapNotNull { messageIndex ->
-                val message = messagesJson.optJSONObject(messageIndex) ?: return@mapNotNull null
-                val role = message.optString("role")
-                if (role != ROLE_USER && role != ROLE_ASSISTANT) return@mapNotNull null
-                RelxChatMessage(
-                    id = message.optString("id", UUID.randomUUID().toString()),
-                    role = role,
-                    content = message.optString("content"),
-                    createdAt = message.optLong("createdAt")
-                )
-            }
+            val messages = decodeMessages(messagesJson)
             val id = item.optString("id")
             if (id.isBlank()) null else RelxConversation(
                 id = id,
@@ -154,6 +213,7 @@ class RelxChatStore(context: Context) {
         private const val KEY_REASONING_DEPTH = "reasoning_depth"
         private const val KEY_CURRENT_ID = "current_conversation_id"
         private const val KEY_CONVERSATIONS = "conversations"
+        private const val KEY_PENDING_REQUEST = "pending_chat_request"
         private const val MAX_CONVERSATIONS = 30
         private const val MAX_MESSAGES = 100
         private const val MAX_PROFILE_CHARS = 4_000

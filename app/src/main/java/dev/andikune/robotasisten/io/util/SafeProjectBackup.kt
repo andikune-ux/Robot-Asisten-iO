@@ -56,8 +56,8 @@ object SafeProjectBackup {
 
         val backupFolder = when {
             root.name.equals("Backup aman", ignoreCase = true) -> root
-            root.name.equals("Relx IO", ignoreCase = true) -> getOrCreateDirectory(root, "Backup aman")
-            else -> getOrCreateDirectory(getOrCreateDirectory(root, "Relx IO"), "Backup aman")
+            root.name.equals("Relxio", ignoreCase = true) -> getOrCreateDirectory(root, "Backup aman")
+            else -> getOrCreateDirectory(getOrCreateDirectory(root, "Relxio"), "Backup aman")
         }
 
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
@@ -91,5 +91,5 @@ object SafeProjectBackup {
         return handoff + runtimeInfo
     }
 
-    private const val BACKUP_PATH = "Relx IO/Backup aman"
+    private const val BACKUP_PATH = "Relxio/Backup aman"
 }

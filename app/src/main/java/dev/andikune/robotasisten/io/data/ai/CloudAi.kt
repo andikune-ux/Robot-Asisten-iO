@@ -25,7 +25,7 @@ class CloudAi(
 ) {
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
         .build()
 
     suspend fun validateApiKey(providerName: String, apiKey: String, customBaseUrl: String? = null): Result<Boolean> {
@@ -104,7 +104,8 @@ class CloudAi(
                     .post(body)
                     .build()
 
-                httpClient.newCall(request).execute().use { response ->
+                httpClient.newBuilder().readTimeout(35, TimeUnit.SECONDS).callTimeout(40, TimeUnit.SECONDS)
+                    .build().newCall(request).execute().use { response ->
                     val responseBody = response.body?.string().orEmpty()
                     if (response.isSuccessful) {
                         val choices = JSONObject(responseBody).optJSONArray("choices")
@@ -164,11 +165,21 @@ class CloudAi(
                         put("content", userMessage.take(MAX_CHAT_MESSAGE_CHARS))
                     })
                 }
+                val responseTimeout = when (reasoningDepth.lowercase()) {
+                    "brief" -> 30
+                    "deep" -> 85
+                    else -> 50
+                }
+                val responseTokens = when (reasoningDepth.lowercase()) {
+                    "brief" -> 500
+                    "deep" -> 1_600
+                    else -> 1_000
+                }
                 val payload = JSONObject().apply {
                     put("model", modelName)
                     put("messages", messages)
                     put("temperature", 0.5)
-                    put("max_tokens", 1_000)
+                    put("max_tokens", responseTokens)
                 }
                 val request = Request.Builder()
                     .url("${baseUrl}chat/completions")
@@ -176,7 +187,10 @@ class CloudAi(
                     .addHeader("Content-Type", "application/json")
                     .post(payload.toString().toRequestBody("application/json".toMediaType()))
                     .build()
-                httpClient.newCall(request).execute().use { response ->
+                httpClient.newBuilder()
+                    .readTimeout(responseTimeout.toLong(), TimeUnit.SECONDS)
+                    .callTimeout((responseTimeout + 5).toLong(), TimeUnit.SECONDS)
+                    .build().newCall(request).execute().use { response ->
                     val responseBody = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
                         LogHelper.w("CloudAi", "Chat HTTP error ${response.code}")

@@ -45,14 +45,14 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
     }
     var status by remember {
         mutableStateOf(
-            if (usesScopedStorage) "Siap mengekspor langsung ke Penyimpanan internal/Relx IO/Backup aman."
-            else "Pilih Penyimpanan internal pada pemilih folder. Aplikasi akan membuat Relx IO/Backup aman di lokasi tersebut."
+            if (usesScopedStorage) "Siap mengekspor langsung ke Penyimpanan internal/Relxio/Backup aman."
+            else "Pilih Penyimpanan internal pada pemilih folder. Aplikasi akan membuat Relxio/Backup aman di lokasi tersebut."
         )
     }
     var exporting by remember { mutableStateOf(false) }
 
     fun showSuccess(output: Uri) {
-        status = "Backup berhasil dibuat: ${output.lastPathSegment?.substringAfterLast('/') ?: "file .txt"} di Penyimpanan internal/Relx IO/Backup aman."
+        status = "Backup berhasil dibuat: ${output.lastPathSegment?.substringAfterLast('/') ?: "file .txt"} di Penyimpanan internal/Relxio/Backup aman."
     }
 
     fun exportDirectly() {
@@ -118,7 +118,7 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                "Lokasi: Penyimpanan internal/Relx IO/Backup aman/RELX-iO_BackupAman_[waktu].txt",
+                "Lokasi: Penyimpanan internal/Relxio/Backup aman/RELX-iO_BackupAman_[waktu].txt",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary
             )

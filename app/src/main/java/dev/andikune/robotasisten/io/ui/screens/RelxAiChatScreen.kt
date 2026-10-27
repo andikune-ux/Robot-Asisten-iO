@@ -52,7 +52,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,23 +63,23 @@ import androidx.compose.ui.unit.dp
 import dev.andikune.robotasisten.io.data.ai.RelxChatMessage
 import dev.andikune.robotasisten.io.data.ai.RelxChatProfile
 import dev.andikune.robotasisten.io.data.ai.RelxChatStore
+import dev.andikune.robotasisten.io.data.ai.RelxPendingChatRequest
 import dev.andikune.robotasisten.io.di.AppModule
-import kotlinx.coroutines.launch
+import dev.andikune.robotasisten.io.service.RelxChatReplyHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
     val settings = remember { AppModule.provideSettingsRepository(context) }
-    val aiRepository = remember { AppModule.provideAiRepository(context) }
     val store = remember { RelxChatStore(context) }
     val activeMode by settings.activeMode.collectAsState()
-    val scope = rememberCoroutineScope()
+    val replyWork by RelxChatReplyHelper.observe(context).collectAsState(initial = null)
     var conversation by remember { mutableStateOf(store.currentConversation() ?: store.newConversation()) }
     var messages by remember { mutableStateOf(conversation.messages) }
     var profile by remember { mutableStateOf(store.profile()) }
     var draft by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(store.pendingRequest() != null) }
     var showProfile by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var showEditMessage by remember { mutableStateOf(false) }
@@ -94,6 +93,15 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
         else -> "Pilih AI Offline atau AI API Key di Beranda"
     }
 
+    LaunchedEffect(replyWork?.id, replyWork?.state) {
+        if (replyWork?.state?.isFinished == true) {
+            store.currentConversation()?.let { current ->
+                if (current.id == conversation.id) messages = current.messages
+            }
+            busy = false
+        }
+    }
+
     fun newConversation() {
         conversation = store.newConversation()
         messages = emptyList()
@@ -104,28 +112,20 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
         val requestHistory = history.map { it.role to it.content }
         val requestMode = activeMode
         val requestProfile = profile
+        val request = RelxPendingChatRequest(
+            conversationId = conversationId,
+            mode = requestMode,
+            history = requestHistory,
+            userMessage = userText,
+            pendingMessages = pending,
+            persona = requestProfile.persona,
+            memory = requestProfile.memory,
+            instructions = requestProfile.instructions,
+            reasoningDepth = requestProfile.reasoningDepth
+        )
+        store.savePendingRequest(request)
+        RelxChatReplyHelper.enqueue(context, request)
         busy = true
-        scope.launch {
-            val reply = runCatching {
-                aiRepository.chatReply(
-                    mode = requestMode,
-                    history = requestHistory,
-                    userMessage = userText,
-                    persona = requestProfile.persona,
-                    memory = requestProfile.memory,
-                    instructions = requestProfile.instructions,
-                    reasoningDepth = requestProfile.reasoningDepth
-                )
-            }.getOrNull()
-            val assistantMessage = RelxChatMessage(
-                role = RelxChatStore.ROLE_ASSISTANT,
-                content = reply ?: "RELX AI belum menerima jawaban. Periksa model offline atau koneksi, API key, provider, dan model aktif; lalu coba balas ulang."
-            )
-            val completed = pending + assistantMessage
-            store.saveMessages(conversationId, completed)
-            if (conversation.id == conversationId) messages = completed
-            busy = false
-        }
     }
 
     fun sendMessage() {
