@@ -55,6 +55,9 @@ object AppModule {
     private var modelDownloader: ModelDownloader? = null
 
     @Volatile
+    private var offlineAi: OfflineAi? = null
+
+    @Volatile
     private var backupHelper: BackupHelper? = null
 
     @Volatile
@@ -103,6 +106,12 @@ object AppModule {
         }
     }
 
+    fun provideOfflineAi(context: Context): OfflineAi {
+        return offlineAi ?: synchronized(this) {
+            offlineAi ?: OfflineAi(context.applicationContext, provideModelDownloader(context)).also { offlineAi = it }
+        }
+    }
+
     fun provideNetworkMonitor(context: Context): NetworkMonitor {
         return networkMonitor ?: synchronized(this) {
             networkMonitor ?: NetworkMonitor(context.applicationContext).also { networkMonitor = it }
@@ -123,8 +132,7 @@ object AppModule {
             val ruleRepo = provideRuleRepository(context)
             val ruleEngine = RuleEngine(ruleRepo)
             val libraryAi = LibraryAi(ruleEngine)
-            val downloader = provideModelDownloader(context)
-            val offlineAi = OfflineAi(context.applicationContext, downloader)
+            val offlineAi = provideOfflineAi(context)
             val keyStore = provideApiKeyStore(context)
             val rateLimiter = RateLimiter()
             val cloudAi = CloudAi(keyStore, rateLimiter)

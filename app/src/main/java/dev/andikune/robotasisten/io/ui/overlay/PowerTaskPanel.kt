@@ -17,8 +17,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,11 +34,11 @@ fun PowerTaskPanel(
     result: String,
     isBusy: Boolean,
     status: String,
+    autoReadContinuations: Boolean,
+    onAutoReadContinuationsChange: (Boolean) -> Unit,
     onPromptChange: (String) -> Unit,
     onConfirmTask: () -> Unit,
     onAnalyzeAndAnswer: () -> Unit,
-    onScrollUp: () -> Unit,
-    onScrollDown: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -47,7 +47,7 @@ fun PowerTaskPanel(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("⚡ RELX Power", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 TextButton(onClick = onClose) { Text("Tutup") }
@@ -62,9 +62,17 @@ fun PowerTaskPanel(
                 minLines = 2,
                 maxLines = 4
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Switch(checked = autoReadContinuations, onCheckedChange = onAutoReadContinuationsChange)
+                Column(Modifier.weight(1f)) {
+                    Text("Baca sambungan otomatis", style = MaterialTheme.typography.labelLarge)
+                    Text("RELX Power dapat menggulir maks. 3 layar tambahan lalu mencoba kembali ke posisi awal.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
-                "Konfirmasi akan membaca teks layar yang sedang terbuka dan meminta AI menyusun langkah berikutnya. Scroll hanya dilakukan satu langkah saat Anda menekan tombol. RELX Power tidak menekan Kirim/Submit atau menjalankan aksi eksternal tanpa persetujuan Anda.",
+                "Ketuk Konfirmasi untuk membaca layar dan meminta rencana AI. Gulir otomatis hanya untuk membaca teks. AI tidak otomatis menekan tombol, mengirim pesan, Submit, menghapus, atau membayar; tindakan seperti itu harus ditinjau dan disetujui pengguna.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -79,17 +87,12 @@ fun PowerTaskPanel(
             }
             if (result.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
-                Text("Rencana RELX AI", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text("Analisa dan saran langkah", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(top = 4.dp)) {
                     Text(result, style = MaterialTheme.typography.bodySmall)
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onScrollUp, modifier = Modifier.weight(1f)) { Text("Scroll atas") }
-                OutlinedButton(onClick = onScrollDown, modifier = Modifier.weight(1f)) { Text("Scroll bawah") }
-            }
-            Spacer(Modifier.height(6.dp))
             Button(onClick = onAnalyzeAndAnswer, modifier = Modifier.fillMaxWidth(), enabled = !isBusy) {
                 Text("Analisa layar & tampilkan jawaban")
             }

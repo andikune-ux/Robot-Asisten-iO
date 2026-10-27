@@ -33,7 +33,8 @@ class AiRepository(
         userMessage: String,
         persona: String,
         memory: String,
-        instructions: String
+        instructions: String,
+        reasoningDepth: String = "balanced"
     ): String? = when (mode.trim().uppercase()) {
         "AI_OFFLINE", "OFFLINE" -> offlineAi.generateChatReply(
             selectedModelName = settingsRepository.selectedOfflineModel.value,
@@ -41,7 +42,8 @@ class AiRepository(
             userMessage = userMessage,
             persona = persona,
             memory = memory,
-            instructions = instructions
+            instructions = instructions,
+            reasoningDepth = reasoningDepth
         )
         "AI_OPEN_KEY", "CLOUD" -> cloudAi.queryConversation(
             history = history,
@@ -51,7 +53,8 @@ class AiRepository(
             customBaseUrl = settingsRepository.customBaseUrl.value,
             persona = persona,
             memory = memory,
-            instructions = instructions
+            instructions = instructions,
+            reasoningDepth = reasoningDepth
         )
         else -> null
     }

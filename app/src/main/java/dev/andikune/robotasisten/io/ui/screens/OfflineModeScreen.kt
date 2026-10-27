@@ -15,8 +15,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -41,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.andikune.robotasisten.io.data.ai.OfflineModelSpec
 import dev.andikune.robotasisten.io.di.AppModule
 import dev.andikune.robotasisten.io.ui.theme.SuccessGreen
 import dev.andikune.robotasisten.io.util.DeviceHelper
@@ -58,8 +62,40 @@ fun OfflineModeScreen(onNavigateBack: () -> Unit) {
     val progressMap by downloader.downloadProgress.collectAsState()
     val scope = rememberCoroutineScope()
     var downloadingModelId by remember { mutableStateOf<String?>(null) }
-    var downloadFailed by remember { mutableStateOf(false) }
+    var failedModelIds by remember { mutableStateOf(emptySet<String>()) }
+    var pendingDelete by remember { mutableStateOf<OfflineModelSpec?>(null) }
     val freeStorage = DeviceHelper.getDeviceInfo(context)["Available Storage"] ?: "Tidak diketahui"
+
+    fun isSelected(model: OfflineModelSpec): Boolean =
+        selectedModel.equals(model.id, true) || selectedModel.equals(model.name, true) ||
+            (model.id == dev.andikune.robotasisten.io.data.ai.ModelDownloader.MODEL_ID && selectedModel.equals("Qwen 2.5 0.5B", true))
+
+    fun beginDownload(model: OfflineModelSpec) {
+        if (downloadingModelId != null) return
+        downloadingModelId = model.id
+        failedModelIds = failedModelIds - model.id
+        scope.launch {
+            try {
+                downloader.startDownload(model) { success ->
+                    if (success) {
+                        settingsRepo.setSelectedOfflineModel(model.id)
+                        failedModelIds = failedModelIds - model.id
+                        ToastHelper.showShort(context, "Model berhasil diunduh, diverifikasi, dan diaktifkan")
+                    } else {
+                        failedModelIds = failedModelIds + model.id
+                        ToastHelper.showShort(context, "Unduhan gagal. Tekan Coba Lagi untuk melanjutkan data yang tersimpan.")
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                failedModelIds = failedModelIds + model.id
+                ToastHelper.showShort(context, "Unduhan gagal: ${error.message ?: "coba lagi"}")
+            } finally {
+                downloadingModelId = null
+            }
+        }
+    }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("AI Offline (Model di HP)") }, navigationIcon = {
@@ -68,9 +104,7 @@ fun OfflineModeScreen(onNavigateBack: () -> Unit) {
             }
         })
     }) { innerPadding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
@@ -78,66 +112,63 @@ fun OfflineModeScreen(onNavigateBack: () -> Unit) {
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "Unduh model MediaPipe resmi (sekitar 547 MB). Model baru dapat diaktifkan setelah ukuran dan SHA-256 terverifikasi. Pengunduhan memerlukan internet; inferensi berjalan di perangkat.",
+                "Pilih dari model ringan ke model yang lebih mampu. Unduhan diverifikasi dengan SHA-256. Jika koneksi terputus, data parsial disimpan dan Coba Lagi melanjutkan lewat HTTP Range bila server mendukungnya. Model berjalan di perangkat setelah dipilih.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(downloader.availableModels, key = { it.id }) { model ->
                     val installed = downloader.isModelDownloaded(model)
-                    val active = selectedModel == model.id && installed
+                    val active = isSelected(model) && installed
                     val progress = progressMap[model.id]
+                    val partialBytes = downloader.partialDownloadedBytes(model)
+                    val hasFiles = downloader.hasModelFiles(model)
                     Card(
                         shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = if (active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(Modifier.padding(16.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(model.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                    Text("Ukuran: ${model.sizeText} · MediaPipe Tasks GenAI", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Ukuran: ${model.sizeText} · MediaPipe task · Apache-2.0", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if (active) Text("AKTIF", style = MaterialTheme.typography.labelSmall, color = SuccessGreen, fontWeight = FontWeight.Bold)
                             }
+                            Spacer(Modifier.height(6.dp))
+                            Text(model.capability, style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.height(4.dp))
+                            Text(model.recommendedRamText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (progress != null) {
                                 Spacer(Modifier.height(10.dp))
                                 LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                                Text(if (progress >= 1f) "Memverifikasi model…" else "Mengunduh… ${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                            if (downloadFailed) {
+                                Text("Mengunduh/memverifikasi ${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            } else if (!installed && partialBytes > 0L) {
                                 Spacer(Modifier.height(6.dp))
-                                Text("Unduhan atau verifikasi gagal. Periksa koneksi dan coba lagi.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                Text("Data tersimpan: ${formatMiB(partialBytes)} dari ${model.sizeText}; coba lagi akan melanjutkan unduhan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                            if (model.id in failedModelIds) {
+                                Spacer(Modifier.height(6.dp))
+                                Text("Unduhan gagal. File parsial yang belum lengkap dipertahankan agar bisa dilanjutkan.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                             }
                             Spacer(Modifier.height(12.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                                if (hasFiles && downloadingModelId != model.id) {
+                                    IconButton(onClick = { pendingDelete = model }, enabled = true) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Hapus file model ${model.name}", tint = MaterialTheme.colorScheme.error)
+                                    }
+                                }
                                 when {
                                     downloadingModelId == model.id -> Button(onClick = {}, enabled = false, shape = RoundedCornerShape(8.dp)) { Text("Sedang memproses…") }
-                                    !installed -> Button(
-                                        onClick = {
-                                            downloadingModelId = model.id
-                                            downloadFailed = false
-                                            scope.launch {
-                                                try {
-                                                    downloader.startDownload(model) { success ->
-                                                        downloadFailed = !success
-                                                        if (success) ToastHelper.showShort(context, "Model berhasil diunduh dan diverifikasi")
-                                                    }
-                                                } catch (cancelled: CancellationException) {
-                                                    throw cancelled
-                                                } catch (error: Exception) {
-                                                    downloadFailed = true
-                                                    ToastHelper.showShort(context, "Unduhan gagal: ${error.message ?: "coba lagi"}")
-                                                } finally {
-                                                    downloadingModelId = null
-                                                }
-                                            }
-                                        }, shape = RoundedCornerShape(8.dp)
-                                    ) {
+                                    !installed -> Button(onClick = { beginDownload(model) }, shape = RoundedCornerShape(8.dp)) {
                                         Icon(Icons.Default.Download, contentDescription = null)
                                         Spacer(Modifier.width(6.dp))
-                                        Text(if (downloadFailed) "Coba Lagi" else "Unduh Model")
+                                        Text(if (model.id in failedModelIds || partialBytes > 0L) "Coba Lagi / Lanjutkan" else "Unduh Model")
                                     }
                                     active -> Button(onClick = {}, enabled = false, shape = RoundedCornerShape(8.dp)) {
                                         Icon(Icons.Default.Check, contentDescription = null)
@@ -158,4 +189,33 @@ fun OfflineModeScreen(onNavigateBack: () -> Unit) {
             }
         }
     }
+
+    pendingDelete?.let { model ->
+        val deletingActiveModel = isSelected(model) && downloader.isModelDownloaded(model)
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Hapus model offline?") },
+            text = {
+                Text(if (deletingActiveModel)
+                    "${model.name} sedang dipilih. File, status verifikasi, dan unduhan parsial akan dihapus; pilihan model offline dikosongkan dan model dalam memori ditutup. Anda perlu mengunduh model lagi untuk memakai mode Offline."
+                else "Hapus model ${model.name}, status verifikasi, dan data unduhan parsial dari penyimpanan privat aplikasi?")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    pendingDelete = null
+                    scope.launch {
+                        if (deletingActiveModel) {
+                            settingsRepo.setSelectedOfflineModel("")
+                            AppModule.provideOfflineAi(context).releaseCachedEngine()
+                        }
+                        val deleted = downloader.deleteModelFiles(model)
+                        ToastHelper.showShort(context, if (deleted) "File model dihapus" else "Gagal menghapus sebagian file model")
+                    }
+                }) { Text("Hapus") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Batal") } }
+        )
+    }
 }
+
+private fun formatMiB(bytes: Long): String = "%.1f MB".format(bytes / 1_000_000.0)

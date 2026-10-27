@@ -22,7 +22,8 @@ data class RelxConversation(
 data class RelxChatProfile(
     val persona: String,
     val memory: String,
-    val instructions: String
+    val instructions: String,
+    val reasoningDepth: String = "balanced"
 )
 
 /** Local-only chat history and profile settings. Never included in project documentation export. */
@@ -32,7 +33,8 @@ class RelxChatStore(context: Context) {
     fun profile() = RelxChatProfile(
         persona = prefs.getString(KEY_PERSONA, DEFAULT_PERSONA).orEmpty(),
         memory = prefs.getString(KEY_MEMORY, "").orEmpty(),
-        instructions = prefs.getString(KEY_INSTRUCTIONS, "").orEmpty()
+        instructions = prefs.getString(KEY_INSTRUCTIONS, "").orEmpty(),
+        reasoningDepth = prefs.getString(KEY_REASONING_DEPTH, "balanced").orEmpty().ifBlank { "balanced" }
     )
 
     fun saveProfile(profile: RelxChatProfile) {
@@ -40,6 +42,7 @@ class RelxChatStore(context: Context) {
             .putString(KEY_PERSONA, profile.persona.take(MAX_PROFILE_CHARS))
             .putString(KEY_MEMORY, profile.memory.take(MAX_PROFILE_CHARS))
             .putString(KEY_INSTRUCTIONS, profile.instructions.take(MAX_PROFILE_CHARS))
+            .putString(KEY_REASONING_DEPTH, profile.reasoningDepth.take(20))
             .apply()
     }
 
@@ -148,6 +151,7 @@ class RelxChatStore(context: Context) {
         private const val KEY_PERSONA = "persona"
         private const val KEY_MEMORY = "memory"
         private const val KEY_INSTRUCTIONS = "instructions"
+        private const val KEY_REASONING_DEPTH = "reasoning_depth"
         private const val KEY_CURRENT_ID = "current_conversation_id"
         private const val KEY_CONVERSATIONS = "conversations"
         private const val MAX_CONVERSATIONS = 30

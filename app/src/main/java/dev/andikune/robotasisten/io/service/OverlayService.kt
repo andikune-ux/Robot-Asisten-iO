@@ -10,6 +10,7 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.util.DisplayMetrics
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -93,6 +94,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private val powerResult = mutableStateOf("")
     private val powerStatus = mutableStateOf("")
     private val isPowerBusy = mutableStateOf(false)
+    private val autoReadContinuations = mutableStateOf(true)
     private val currentAnalysis = mutableStateOf<DetectedQuestion?>(null)
     private val currentAnswer = mutableStateOf<ResolutionResult?>(null)
     private val currentOcrText = mutableStateOf<ScreenReadResult?>(null)
@@ -171,6 +173,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                                     }
                                 } else {
                                     isMenuOpen.value = !isMenuOpen.value
+                                    if (isMenuOpen.value) updatePanelPosition()
                                 }
                                 updatePanelVisibility()
                             }.onFailure { error ->
@@ -183,6 +186,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             runCatching {
                                 performClickFeedback()
                                 isMenuOpen.value = true
+                                updatePanelPosition()
                                 updatePanelVisibility()
                             }.onFailure { error ->
                                 LogHelper.e(TAG, "Bubble long-press action failed", error)
@@ -194,6 +198,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             bubbleParams.y += dy.toInt()
                             try {
                                 if (bubbleView?.parent != null) manager.updateViewLayout(bubbleView, bubbleParams)
+                                if (panelView?.parent != null && !isPanelDismissed.value) updatePanelPosition()
                             } catch (error: Exception) {
                                 LogHelper.e(TAG, "Bubble layout update failed", error)
                             }
@@ -212,7 +217,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.CENTER }
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 12
+            y = 12
+        }
 
         panelView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@OverlayService)
@@ -260,6 +269,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             result = powerResult.value,
                             isBusy = isPowerBusy.value,
                             status = powerStatus.value,
+                            autoReadContinuations = autoReadContinuations.value,
+                            onAutoReadContinuationsChange = { autoReadContinuations.value = it },
                             onPromptChange = { powerPrompt.value = it },
                             onConfirmTask = { triggerPowerAnalyze() },
                             onAnalyzeAndAnswer = {
@@ -267,8 +278,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                                 setPowerPanelFocusable(false)
                                 triggerAnalyze(autoAnswer = true)
                             },
-                            onScrollUp = { requestPowerScroll(forward = false) },
-                            onScrollDown = { requestPowerScroll(forward = true) },
                             onClose = {
                                 isPowerOpen.value = false
                                 setPowerPanelFocusable(false)
@@ -290,6 +299,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                                 powerPrompt.value = ""
                                 powerResult.value = ""
                                 powerStatus.value = ""
+                                autoReadContinuations.value = true
                                 updatePanelVisibility()
                             },
                             onOpenHistory = { isMenuOpen.value = false; updatePanelVisibility(); openApp(Routes.HISTORY) },
@@ -329,6 +339,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         val hasResult = currentAnalysis.value != null || currentAnswer.value != null || currentOcrText.value != null || powerResult.value.isNotBlank()
         val shouldShow = !isPanelDismissed.value && (isMenuOpen.value || isPowerOpen.value || hasResult)
         try {
+            if (shouldShow) updatePanelPosition()
             if (shouldShow && panel.parent == null) {
                 manager.addView(panel, panelParams)
             } else if (!shouldShow && panel.parent != null) {
@@ -338,6 +349,37 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
             LogHelper.e(TAG, "Panel visibility update failed", error)
             if (shouldShow) ToastHelper.showShort(this, "Panel overlay gagal dibuka; periksa izin overlay")
         }
+    }
+
+    /** Places the menu beside the bubble and clamps it to safe screen bounds. */
+    private fun updatePanelPosition() {
+        val manager = windowManager ?: return
+        if (!::panelParams.isInitialized) return
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        runCatching { manager.defaultDisplay.getRealMetrics(metrics) }
+        val density = resources.displayMetrics.density.coerceAtLeast(1f)
+        val screenWidth = (metrics.widthPixels.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels).coerceAtLeast(1)
+        val screenHeight = (metrics.heightPixels.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels).coerceAtLeast(1)
+        val margin = (12f * density).toInt()
+        val gap = (8f * density).toInt()
+        val panelWidth = minOf((320f * density).toInt(), (screenWidth - margin * 2).coerceAtLeast(1))
+        val panelHeight = minOf((600f * density).toInt(), (screenHeight - margin * 2).coerceAtLeast(1))
+        val bubbleDp = runCatching { AppModule.provideSettingsRepository(this).overlaySizeDp.value }.getOrDefault(56)
+        val bubbleSizePx = (bubbleDp * density).toInt()
+        val rightX = bubbleParams.x + bubbleSizePx + gap
+        val leftX = bubbleParams.x - panelWidth - gap
+        val wantedX = if (rightX + panelWidth <= screenWidth - margin) rightX else leftX
+        val wantedY = if (bubbleParams.y + panelHeight <= screenHeight - margin) bubbleParams.y else screenHeight - panelHeight - margin
+        panelParams.apply {
+            gravity = Gravity.TOP or Gravity.START
+            width = panelWidth
+            height = panelHeight
+            x = wantedX.coerceIn(margin, (screenWidth - panelWidth - margin).coerceAtLeast(margin))
+            y = wantedY.coerceIn(margin, (screenHeight - panelHeight - margin).coerceAtLeast(margin))
+        }
+        if (panelView?.parent != null) runCatching { manager.updateViewLayout(panelView, panelParams) }
+            .onFailure { LogHelper.e(TAG, "Panel reposition failed", it) }
     }
 
     private fun setPowerPanelFocusable(focusable: Boolean) {
@@ -443,17 +485,18 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         var accessibilityWasAvailable = false
         if (PermissionHelper.isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) {
             accessibilityWasAvailable = true
-            val previousVisibility = bubbleView?.visibility
+            val previousBubbleAlpha = bubbleView?.alpha
             val previousPanelVisibility = panelView?.visibility
-            bubbleView?.visibility = View.GONE
+            // Keep the robot visible as a progress indicator; dim it briefly to reduce OCR noise.
+            bubbleView?.alpha = 0.28f
             panelView?.visibility = View.GONE
             try {
                 runCatching {
                     val inputManager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                     panelView?.windowToken?.let { inputManager.hideSoftInputFromWindow(it, 0) }
                 }
-                // Give WindowManager a frame to remove the overlay from the screenshot.
-                delay(180)
+                // The target screen remains open; only the floating result panel is hidden during capture.
+                delay(100)
                 val result = CompletableDeferred<Result<String>>()
                 val accepted = MyAccessibilityService.requestScreenText { screenResult ->
                     result.complete(screenResult)
@@ -468,7 +511,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                     LogHelper.w(TAG, "Accessibility service is not connected; trying clipboard")
                 }
             } finally {
-                if (previousVisibility != null && bubbleView?.parent != null) bubbleView?.visibility = previousVisibility
+                if (previousBubbleAlpha != null && bubbleView?.parent != null) bubbleView?.alpha = previousBubbleAlpha
                 if (previousPanelVisibility != null && panelView?.parent != null) panelView?.visibility = previousPanelVisibility
             }
         }
@@ -481,16 +524,53 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         }
     }
 
+    private suspend fun readPowerScreen(): ScreenReadResult? {
+        val first = readScreenOrClipboard() ?: return null
+        if (!autoReadContinuations.value || !PermissionHelper.isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) return first
+        val pages = mutableListOf(first.text.trim())
+        var successfulScrolls = 0
+        try {
+            for (index in 0 until MAX_POWER_EXTRA_PAGES) {
+                if (!scrollTargetWindow(forward = true)) break
+                successfulScrolls++
+                delay(220)
+                val next = readScreenOrClipboard()?.text?.trim().orEmpty()
+                if (next.isBlank()) break
+                val normalized = next.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(" ")
+                val previous = pages.last().lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(" ")
+                if (normalized.isBlank() || normalized == previous) break
+                pages += next
+            }
+        } finally {
+            // This feature only reads; it attempts to restore the original scroll position.
+            repeat(successfulScrolls) {
+                if (scrollTargetWindow(forward = false)) delay(160)
+            }
+        }
+        val combined = pages.distinct().joinToString("\n\n[LANJUTAN LAYAR]\n\n").take(MAX_POWER_CAPTURE_CHARS)
+        return ScreenReadResult(combined, if (pages.size > 1) "Layar (hingga ${pages.size} tampilan; posisi dipulihkan)" else first.source)
+    }
+
+    private suspend fun scrollTargetWindow(forward: Boolean): Boolean {
+        val result = CompletableDeferred<Boolean>()
+        val accepted = MyAccessibilityService.scrollActiveWindowOnce(forward) { didScroll ->
+            if (!result.isCompleted) result.complete(didScroll)
+        }
+        if (!accepted) return false
+        return withTimeoutOrNull(2_000L) { result.await() } ?: false
+    }
+
     private fun triggerPowerAnalyze() {
         if (isPowerBusy.value) return
         isPowerBusy.value = true
+        bubbleStatus.value = BubbleStatus.ANALYZING
         powerResult.value = ""
-        powerStatus.value = "Membaca layar dan menyiapkan konteks…"
+        powerStatus.value = if (autoReadContinuations.value) "Membaca layar dan sambungannya (maks. 3 layar tambahan)…" else "Membaca layar dan menyiapkan konteks…"
         isPanelDismissed.value = false
         updatePanelVisibility()
         serviceScope.launch {
             try {
-                val readResult = readScreenOrClipboard()
+                val readResult = readPowerScreen()
                 if (readResult == null || readResult.text.isBlank()) {
                     powerStatus.value = "Tidak ada teks layar. Aktifkan Aksesibilitas RELX.iO atau salin teks terlebih dahulu."
                     return@launch
@@ -507,8 +587,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                     appendLine("Tugas pengguna: $task")
                     appendLine("Sumber konteks: ${readResult.source}")
                     appendLine("Teks layar:")
-                    append(readResult.text.take(8_000))
-                    appendLine("\nBerikan analisa dan rencana yang jelas dalam bahasa yang sama dengan tugas pengguna. Jangan mengklaim telah melakukan aksi apa pun. Jangan menyuruh aplikasi menekan tombol Kirim/Submit, menghapus data, membayar, atau mengubah pengaturan tanpa konfirmasi manusia.")
+                    append(readResult.text.take(12_000))
+                    appendLine("\nGabungkan bagian layar yang berlanjut, fokus pada tugas pengguna, dan jawab dalam bahasanya. Berikan analisa serta rencana yang bisa diperiksa. Jangan mengklaim telah melakukan aksi. Jangan menyuruh aplikasi menekan tombol Kirim/Submit, menghapus data, membayar, atau mengubah pengaturan tanpa konfirmasi manusia.")
                 }
                 val reply = AppModule.provideAiRepository(this@OverlayService).chatReply(
                     mode = mode,
@@ -516,37 +596,25 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                     userMessage = prompt,
                     persona = profile.persona,
                     memory = profile.memory,
-                    instructions = profile.instructions
+                    instructions = profile.instructions,
+                    reasoningDepth = profile.reasoningDepth
                 )
                 if (reply.isNullOrBlank()) {
                     powerResult.value = "AI tidak memberi hasil. Periksa model, provider, API key, jaringan, dan mode yang aktif."
                     powerStatus.value = "Analisa gagal; belum ada saran tindakan."
                 } else {
                     powerResult.value = reply
-                    powerStatus.value = "Analisa selesai. Scroll berikutnya hanya berjalan jika Anda menekan tombol scroll."
+                    powerStatus.value = "Analisa selesai. Teks tambahan dibaca otomatis jika dapat digulir; posisi layar dipulihkan."
                 }
             } catch (error: Exception) {
                 LogHelper.e(TAG, "RELX Power analysis failed", error)
                 powerStatus.value = "Analisa gagal: ${error.message ?: "coba lagi"}"
             } finally {
                 isPowerBusy.value = false
+                bubbleStatus.value = BubbleStatus.IDLE
                 updatePanelVisibility()
             }
         }
-    }
-
-    private fun requestPowerScroll(forward: Boolean) {
-        if (!PermissionHelper.isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) {
-            powerStatus.value = "Aktifkan Aksesibilitas RELX.iO terlebih dahulu."
-            ToastHelper.showShort(this, "Aksesibilitas RELX.iO belum aktif")
-            return
-        }
-        val accepted = MyAccessibilityService.scrollActiveWindowOnce(forward) { didScroll ->
-            powerStatus.value = if (didScroll) {
-                if (forward) "Layar digulir satu langkah ke bawah." else "Layar digulir satu langkah ke atas."
-            } else "Tidak ditemukan area layar yang dapat digulir."
-        }
-        if (!accepted) powerStatus.value = "Layanan aksesibilitas tidak tersambung. Buka checklist izin dan aktifkan kembali."
     }
 
     private fun triggerAnswerNow(question: DetectedQuestion) {
@@ -750,6 +818,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     companion object {
         private const val TAG = "OverlayService"
         private const val SCREEN_READ_TIMEOUT_MS = 15_000L
+        private const val MAX_POWER_EXTRA_PAGES = 3
+        private const val MAX_POWER_CAPTURE_CHARS = 20_000
         val isRunning = MutableStateFlow(false)
     }
 }
