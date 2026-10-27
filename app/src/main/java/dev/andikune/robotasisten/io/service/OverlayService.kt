@@ -469,3 +469,404 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
 
     // ... LANJUTKAN KE BAGIAN 2 DI BAWAH INI ...
 }
+private suspend fun readPowerScreen(): ScreenReadResult? {
+        val first = readScreenOrClipboard() ?: return null
+        if (!autoReadContinuations.value || !PermissionHelper.isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) return first
+        val pages = mutableListOf(first.text.trim())
+        var successfulScrolls = 0
+        try {
+            val seenPages = mutableSetOf<String>()
+            seenPages += pages.first().lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("")
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                if (!scrollTargetWindow(forward = true)) break
+                successfulScrolls++
+                delay(220)
+                val next = readScreenOrClipboard()?.text?.trim().orEmpty()
+                if (next.isBlank()) break
+                val normalized = next.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("")
+                val previous = pages.last().lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("")
+                if (normalized.isBlank() || normalized == previous || !seenPages.add(normalized)) break
+                pages += next
+            }
+        } finally {
+            repeat(successfulScrolls) {
+                if (scrollTargetWindow(forward = false)) delay(160)
+            }
+        }
+        val combined = pages.distinct().joinToString("\n\n[LANJUTAN LAYAR]\n\n").take(MAX_POWER_CAPTURE_CHARS)
+        return ScreenReadResult(combined, if (pages.size > 1) "Layar (hingga ${pages.size} tampilan; posisi dipulihkan)" else first.source)
+    }
+
+    private suspend fun scrollTargetWindow(forward: Boolean): Boolean {
+        val result = CompletableDeferred<Boolean>()
+        val accepted = MyAccessibilityService.scrollActiveWindowOnce(forward) { didScroll ->
+            if (!result.isCompleted) result.complete(didScroll)
+        }
+        if (!accepted) return false
+        return withTimeoutOrNull(2_000L) { result.await() } ?: false
+    }
+
+    private fun triggerPowerAnalyze() {
+        if (isPowerBusy.value) return
+        operationJob?.cancel()
+        val thisOperation = operationId.incrementAndGet() // PERBAIKAN #6: AtomicLong
+        isPowerBusy.value = true
+        bubbleStatus.value = BubbleStatus.ANALYZING
+        powerResult.value = ""
+        powerStatus.value = if (autoReadContinuations.value) "Membaca layar dan seluruh sambungannya sampai tidak ada konten baru…" else "Membaca layar dan menyiapkan konteks…"
+        isPanelDismissed.value = false
+        updatePanelVisibility()
+        operationJob = serviceScope.launch {
+            try {
+                val readResult = readPowerScreen()
+                if (thisOperation != operationId.get()) return@launch
+                if (readResult == null || readResult.text.isBlank()) {
+                    powerStatus.value = "Tidak ada teks layar. Aktifkan Aksesibilitas RELX.iO atau salin teks terlebih dahulu."
+                    return@launch
+                }
+                val settings = AppModule.provideSettingsRepository(this@OverlayService)
+                val mode = settings.activeMode.value
+                if (thisOperation != operationId.get()) return@launch
+                if (mode.uppercase() !in setOf("AI_OFFLINE", "AI_OPEN_KEY")) {
+                    powerStatus.value = "Pilih AI Offline atau AI API Key sebagai mode aktif terlebih dahulu."
+                    return@launch
+                }
+                val profile = RelxChatStore(this@OverlayService).profile()
+                val task = powerPrompt.value.trim().ifBlank { "AUTO_LANGUAGE: Analyze the actual question/task visible on screen and suggest the next safe step in the language of that screen content." }
+                val prompt = buildString {
+                    appendLine("Tugas pengguna: $task")
+                    appendLine("Sumber konteks: ${readResult.source}")
+                    appendLine("Teks layar:")
+                    append(readResult.text.take(12_000))
+                    appendLine("\nGabungkan bagian layar yang berlanjut, fokus pada tugas pengguna, dan jawab dalam bahasanya. Berikan analisa serta rencana yang bisa diperiksa. Jangan mengklaim telah melakukan aksi. Jangan menyuruh aplikasi menekan tombol Kirim/Submit, menghapus data, membayar, atau mengubah pengaturan tanpa konfirmasi manusia.")
+                }
+                val reply = AppModule.provideAiRepository(this@OverlayService).chatReply(
+                    mode = mode,
+                    history = emptyList(),
+                    userMessage = prompt,
+                    persona = profile.persona,
+                    memory = profile.memory,
+                    instructions = profile.instructions,
+                    reasoningDepth = profile.reasoningDepth
+                )
+                if (thisOperation != operationId.get()) return@launch
+                if (reply.isNullOrBlank()) {
+                    powerResult.value = "AI tidak memberi hasil. Periksa model, provider, API key, jaringan, dan mode yang aktif."
+                    powerStatus.value = "Analisa gagal; belum ada saran tindakan."
+                } else {
+                    powerResult.value = reply
+                    powerStatus.value = "Analisa selesai. Teks tambahan dibaca otomatis jika dapat digulir; posisi layar dipulihkan."
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                LogHelper.e(TAG, "RELX Power analysis failed", error)
+                powerStatus.value = "Analisa gagal: ${error.message ?: "coba lagi"}"
+            } finally {
+                if (thisOperation == operationId.get()) {
+                    isPowerBusy.value = false
+                    bubbleStatus.value = BubbleStatus.IDLE
+                    updatePanelVisibility()
+                }
+            }
+        }
+    }
+
+    private fun triggerAnalyze(autoAnswer: Boolean) {
+        operationJob?.cancel()
+        val thisOperation = operationId.incrementAndGet() // PERBAIKAN #6: AtomicLong
+        setPowerPanelFocusable(false)
+        currentAnalysis.value = null
+        currentAnswer.value = null
+        currentOcrText.value = null
+        powerResult.value = ""
+        isMenuOpen.value = false
+        isPowerOpen.value = false
+        isPanelDismissed.value = false
+        updatePanelVisibility()
+        bubbleStatus.value = BubbleStatus.ANALYZING
+        performClickFeedback()
+        operationJob = serviceScope.launch {
+            val previousVisibility = bubbleView?.visibility ?: View.VISIBLE
+            try {
+                ToastHelper.showShort(this@OverlayService, "Membaca layar; jika aksesibilitas mati, teks clipboard akan dicoba")
+                val readResult = readScreenOrClipboard()
+                if (thisOperation != operationId.get()) return@launch
+                if (readResult == null || readResult.text.isBlank()) {
+                    bubbleStatus.value = BubbleStatus.IDLE
+                    ToastHelper.showShort(this@OverlayService, "Tidak ada teks terbaca. Aktifkan Aksesibilitas RELX.iO atau salin teks soal terlebih dahulu.")
+                    updatePanelVisibility()
+                    return@launch
+                }
+                val likelyQuestion = QuestionDetector.isLikelyQuestion(readResult.text)
+                val detected = QuestionDetector.detect(readResult.text).copy(confidence = if (likelyQuestion) 0.9f else 0.45f)
+                currentAnalysis.value = detected
+                bubbleStatus.value = BubbleStatus.IDLE
+                updatePanelVisibility()
+                ToastHelper.showShort(this@OverlayService, "Teks dibaca dari ${readResult.source}")
+                if (!isSilentModeEnabled()) SoundHelper.playBeep()
+                if (autoAnswer) triggerAnswerNow(detected)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (thisOperation == operationId.get()) {
+                    LogHelper.e(TAG, "Question analysis failed", error)
+                    currentAnalysis.value = null
+                    currentAnswer.value = null
+                    bubbleStatus.value = BubbleStatus.IDLE
+                    ToastHelper.showShort(this@OverlayService, "Analisis gagal: ${error.message ?: "coba lagi"}")
+                    updatePanelVisibility()
+                }
+            } finally {
+                if (bubbleView?.parent != null && previousVisibility != View.GONE && bubbleView?.visibility == View.GONE) {
+                    bubbleView?.visibility = View.VISIBLE
+                }
+            }
+        }
+    }
+
+    private fun triggerReadOcr() {
+        operationJob?.cancel()
+        val thisOperation = operationId.incrementAndGet() // PERBAIKAN #6: AtomicLong
+        setPowerPanelFocusable(false)
+        currentAnalysis.value = null
+        currentAnswer.value = null
+        currentOcrText.value = null
+        powerResult.value = ""
+        isMenuOpen.value = false
+        isPowerOpen.value = false
+        isPanelDismissed.value = false
+        updatePanelVisibility()
+        bubbleStatus.value = BubbleStatus.ANALYZING
+        operationJob = serviceScope.launch {
+            try {
+                val readResult = readScreenOrClipboard()
+                if (thisOperation != operationId.get()) return@launch
+                if (readResult == null || readResult.text.isBlank()) {
+                    bubbleStatus.value = BubbleStatus.IDLE
+                    ToastHelper.showShort(this@OverlayService, "Tidak ada teks OCR atau clipboard yang tersedia")
+                } else {
+                    currentOcrText.value = readResult
+                    bubbleStatus.value = BubbleStatus.IDLE
+                    updatePanelVisibility()
+                    ToastHelper.showShort(this@OverlayService, "Teks dibaca dari ${readResult.source}")
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (thisOperation == operationId.get()) {
+                    bubbleStatus.value = BubbleStatus.IDLE
+                    LogHelper.e(TAG, "OCR read failed", error)
+                    ToastHelper.showShort(this@OverlayService, "OCR gagal: ${error.message ?: "coba lagi"}")
+                }
+            }
+        }
+    }
+
+    private fun triggerAnswerNow(question: DetectedQuestion) {
+        operationJob?.cancel()
+        val thisOperation = operationId.incrementAndGet() // PERBAIKAN #6: AtomicLong
+        bubbleStatus.value = BubbleStatus.ANSWERING
+        currentAnswer.value = null
+        currentOcrText.value = null
+        updatePanelVisibility()
+        ToastHelper.showShort(this, "Memproses jawaban dengan mode ${AppModule.provideSettingsRepository(this).activeMode.value}")
+        operationJob = serviceScope.launch {
+            try {
+                val settings = AppModule.provideSettingsRepository(this@OverlayService)
+                val fallbackChain = AppModule.provideFallbackChain(this@OverlayService)
+                val historyRepo = AppModule.provideHistoryRepository(this@OverlayService)
+                val mode = settings.activeMode.value
+                val result = fallbackChain.resolve(question.questionText, mode, question.type)
+                if (thisOperation != operationId.get()) return@launch
+                currentAnswer.value = result
+                bubbleStatus.value = BubbleStatus.READY
+                updatePanelVisibility()
+                if (!isSilentModeEnabled()) SoundHelper.playSuccess()
+                if (result.source != dev.andikune.robotasisten.io.logic.FallbackChain.SOURCE_UNAVAILABLE) {
+                    historyRepo.recordAnswer(
+                        question = question.questionText,
+                        answer = result.answer,
+                        mode = mode,
+                        questionType = question.type.name,
+                        isCacheHit = result.isCacheHit
+                    )
+                }
+                if (!settings.confirmBeforeFill.value && result.source != dev.andikune.robotasisten.io.logic.FallbackChain.SOURCE_UNAVAILABLE) {
+                    fillAnswerNow(result.answer)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (thisOperation == operationId.get()) {
+                    LogHelper.e(TAG, "Answer resolution failed", error)
+                    bubbleStatus.value = BubbleStatus.IDLE
+                    ToastHelper.showShort(this@OverlayService, "Jawaban gagal diproses: ${error.message ?: "coba lagi"}")
+                }
+            }
+        }
+    }
+
+    private fun fillAnswerNow(answerText: String) {
+        AutoFillEngine.fillAnswer(this, answerText) { result ->
+            when (result) {
+                AutoFillResult.FILLED -> {
+                    ToastHelper.showShort(this, "Jawaban dimasukkan ke kolom yang sedang fokus")
+                    if (!isSilentModeEnabled()) HapticHelper.vibrateSuccess(this)
+                    currentAnswer.value = currentAnswer.value?.copy(source = "Sudah diisi")
+                    updatePanelVisibility()
+                }
+                AutoFillResult.COPIED_TO_CLIPBOARD -> {
+                    ToastHelper.showShort(this, "Jawaban disalin ke clipboard; tempel secara manual.")
+                }
+                AutoFillResult.FAILED -> ToastHelper.showShort(this, "Pengisian dan penyalinan jawaban gagal")
+            }
+        }
+    }
+
+    private fun performClickFeedback() {
+        if (!isSilentModeEnabled()) HapticHelper.vibrateClick(this)
+    }
+
+    private fun isSilentModeEnabled(): Boolean =
+        runCatching { AppModule.provideSettingsRepository(this).silentMode.value }.getOrDefault(false)
+
+    private fun clearResult() {
+        operationJob?.cancel()
+        operationId.incrementAndGet() // PERBAIKAN #6: Invalidate operasi lama
+        currentAnswer.value = null
+        currentAnalysis.value = null
+        currentOcrText.value = null
+        powerResult.value = ""
+        isPowerOpen.value = false
+        setPowerPanelFocusable(false)
+        isPanelDismissed.value = false
+        isMenuOpen.value = false
+        bubbleStatus.value = BubbleStatus.IDLE
+        updatePanelVisibility()
+    }
+
+    private fun openApp(route: String = Routes.HOME) {
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    putExtra(Constants.EXTRA_NAVIGATION_ROUTE, route)
+                }
+            )
+        }.onFailure { LogHelper.e(TAG, "Could not open app route $route", it) }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                Constants.NOTIFICATION_CHANNEL_ID,
+                Constants.NOTIFICATION_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_LOW
+            ).apply { description = "Status dan kontrol bubble RELX.iO" }
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(text: String): android.app.Notification {
+        val openAppIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val restoreIntent = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, OverlayService::class.java).setAction(Constants.ACTION_RESTORE_OVERLAY),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val stopIntent = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, OverlayService::class.java).setAction(Constants.ACTION_STOP_OVERLAY),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return NotificationCompat.Builder(this, Constants.NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(Constants.APP_NAME)
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_robot)
+            .setContentIntent(openAppIntent)
+            .setOngoing(true)
+            .addAction(R.drawable.ic_robot, "Tampilkan bubble", restoreIntent)
+            .addAction(R.drawable.ic_robot, "Matikan", stopIntent)
+            .build()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            Constants.ACTION_STOP_OVERLAY -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            Constants.ACTION_RESTORE_OVERLAY -> {
+                bubbleView?.visibility = View.VISIBLE
+                isMenuOpen.value = false
+                updatePanelVisibility()
+                return START_STICKY
+            }
+            Constants.ACTION_TRIGGER_ANALYZE -> {
+                triggerAnalyze(autoAnswer = false)
+                return START_NOT_STICKY
+            }
+            Constants.ACTION_TRIGGER_AUTO_ANSWER -> {
+                triggerAnalyze(autoAnswer = true)
+                return START_NOT_STICKY
+            }
+            else -> Unit
+        }
+        intent?.getStringExtra("mode")?.takeIf { it.isNotBlank() }?.let {
+            AppModule.provideSettingsRepository(this).setActiveMode(it)
+        }
+        if (bubbleView?.visibility == View.GONE) bubbleView?.visibility = View.VISIBLE
+        return START_STICKY
+    }
+
+    // PERBAIKAN #8: Lifecycle Cleanup yang Lengkap di onDestroy
+    override fun onDestroy() {
+        isRunning.value = false
+        QuickSettingsTile.requestRefresh(this)
+        
+        // Batalkan semua job dan tunggu selesai
+        operationJob?.cancel()
+        runBlocking { serviceScope.coroutineContext.job.cancelAndJoin() }
+        
+        runCatching { if (bubbleView?.parent != null) windowManager?.removeViewImmediate(bubbleView) }
+        runCatching { if (panelView?.parent != null) windowManager?.removeViewImmediate(panelView) }
+        runCatching { bubbleView?.disposeComposition() }
+        runCatching { panelView?.disposeComposition() }
+        
+        if (lifecycleRegistry.currentState == Lifecycle.State.RESUMED) {
+            lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        }
+        if (lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        }
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        
+        overlayViewModelStore.clear()
+        bubbleView = null
+        panelView = null
+        windowManager = null
+        SoundHelper.release()
+        super.onDestroy()
+        LogHelper.i(TAG, "Overlay stopped cleanly")
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    companion object {
+        private const val TAG = "OverlayService"
+        private const val SCREEN_READ_TIMEOUT_MS = 15_000L
+        private const val MAX_POWER_CAPTURE_CHARS = 20_000
+        val isRunning = MutableStateFlow(false)
+    }
+}
