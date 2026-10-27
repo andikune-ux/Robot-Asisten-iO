@@ -58,6 +58,7 @@ import dev.andikune.robotasisten.io.util.PermissionHelper
 import dev.andikune.robotasisten.io.util.SoundHelper
 import dev.andikune.robotasisten.io.util.ToastHelper
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -65,6 +66,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -165,15 +168,20 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                         onTap = {
                             runCatching {
                                 performClickFeedback()
-                                if (currentAnalysis.value != null || currentAnswer.value != null || currentOcrText.value != null || isPowerOpen.value || powerResult.value.isNotBlank()) {
+                                val hasResult = currentAnalysis.value != null || currentAnswer.value != null || currentOcrText.value != null || isPowerOpen.value || powerResult.value.isNotBlank()
+                                if (isMenuOpen.value) {
+                                    isMenuOpen.value = false
+                                    isPanelDismissed.value = true
+                                } else if (hasResult) {
                                     isPanelDismissed.value = !isPanelDismissed.value
                                     if (isPowerOpen.value || powerResult.value.isNotBlank()) {
                                         isPowerOpen.value = !isPanelDismissed.value
                                         setPowerPanelFocusable(!isPanelDismissed.value)
                                     }
                                 } else {
-                                    isMenuOpen.value = !isMenuOpen.value
-                                    if (isMenuOpen.value) updatePanelPosition()
+                                    isMenuOpen.value = true
+                                    isPanelDismissed.value = false
+                                    updatePanelPosition()
                                 }
                                 updatePanelVisibility()
                             }.onFailure { error ->
@@ -186,6 +194,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                             runCatching {
                                 performClickFeedback()
                                 isMenuOpen.value = true
+                                isPanelDismissed.value = false
                                 updatePanelPosition()
                                 updatePanelVisibility()
                             }.onFailure { error ->
@@ -315,7 +324,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                                 }
                             },
                             onTurnOffRobot = { stopSelf() },
-                            onClose = { isMenuOpen.value = false; updatePanelVisibility() }
+                            onClose = {
+                                isMenuOpen.value = false
+                                isPanelDismissed.value = true
+                                updatePanelVisibility()
+                            }
                         )
                     }
                 }
@@ -428,6 +441,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                 ToastHelper.showShort(this@OverlayService, "Teks dibaca dari ${readResult.source}")
                 if (!isSilentModeEnabled()) SoundHelper.playBeep()
                 if (autoAnswer) triggerAnswerNow(detected)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 if (thisOperation == operationId) {
                     LogHelper.e(TAG, "Question analysis failed", error)
@@ -471,6 +486,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                     updatePanelVisibility()
                     ToastHelper.showShort(this@OverlayService, "Teks dibaca dari ${readResult.source}")
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 if (thisOperation == operationId) {
                     bubbleStatus.value = BubbleStatus.IDLE
@@ -530,7 +547,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         val pages = mutableListOf(first.text.trim())
         var successfulScrolls = 0
         try {
-            for (index in 0 until MAX_POWER_EXTRA_PAGES) {
+            val seenPages = mutableSetOf<String>()
+            seenPages += pages.first().lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(" ")
+            while (true) {
+                currentCoroutineContext().ensureActive()
                 if (!scrollTargetWindow(forward = true)) break
                 successfulScrolls++
                 delay(220)
@@ -538,7 +558,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                 if (next.isBlank()) break
                 val normalized = next.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(" ")
                 val previous = pages.last().lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(" ")
-                if (normalized.isBlank() || normalized == previous) break
+                if (normalized.isBlank() || normalized == previous || !seenPages.add(normalized)) break
                 pages += next
             }
         } finally {
@@ -562,21 +582,25 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
 
     private fun triggerPowerAnalyze() {
         if (isPowerBusy.value) return
+        operationJob?.cancel()
+        val thisOperation = ++operationId
         isPowerBusy.value = true
         bubbleStatus.value = BubbleStatus.ANALYZING
         powerResult.value = ""
-        powerStatus.value = if (autoReadContinuations.value) "Membaca layar dan sambungannya (maks. 3 layar tambahan)…" else "Membaca layar dan menyiapkan konteks…"
+        powerStatus.value = if (autoReadContinuations.value) "Membaca layar dan seluruh sambungannya sampai tidak ada konten baru…" else "Membaca layar dan menyiapkan konteks…"
         isPanelDismissed.value = false
         updatePanelVisibility()
-        serviceScope.launch {
+        operationJob = serviceScope.launch {
             try {
                 val readResult = readPowerScreen()
+                if (thisOperation != operationId) return@launch
                 if (readResult == null || readResult.text.isBlank()) {
                     powerStatus.value = "Tidak ada teks layar. Aktifkan Aksesibilitas RELX.iO atau salin teks terlebih dahulu."
                     return@launch
                 }
                 val settings = AppModule.provideSettingsRepository(this@OverlayService)
                 val mode = settings.activeMode.value
+                if (thisOperation != operationId) return@launch
                 if (mode.uppercase() !in setOf("AI_OFFLINE", "AI_OPEN_KEY")) {
                     powerStatus.value = "Pilih AI Offline atau AI API Key sebagai mode aktif terlebih dahulu."
                     return@launch
@@ -599,6 +623,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                     instructions = profile.instructions,
                     reasoningDepth = profile.reasoningDepth
                 )
+                if (thisOperation != operationId) return@launch
                 if (reply.isNullOrBlank()) {
                     powerResult.value = "AI tidak memberi hasil. Periksa model, provider, API key, jaringan, dan mode yang aktif."
                     powerStatus.value = "Analisa gagal; belum ada saran tindakan."
@@ -606,13 +631,17 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                     powerResult.value = reply
                     powerStatus.value = "Analisa selesai. Teks tambahan dibaca otomatis jika dapat digulir; posisi layar dipulihkan."
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 LogHelper.e(TAG, "RELX Power analysis failed", error)
                 powerStatus.value = "Analisa gagal: ${error.message ?: "coba lagi"}"
             } finally {
-                isPowerBusy.value = false
-                bubbleStatus.value = BubbleStatus.IDLE
-                updatePanelVisibility()
+                if (thisOperation == operationId) {
+                    isPowerBusy.value = false
+                    bubbleStatus.value = BubbleStatus.IDLE
+                    updatePanelVisibility()
+                }
             }
         }
     }
@@ -650,6 +679,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                 if (!settings.confirmBeforeFill.value && result.source != dev.andikune.robotasisten.io.logic.FallbackChain.SOURCE_UNAVAILABLE) {
                     fillAnswerNow(result.answer)
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 if (thisOperation == operationId) {
                     LogHelper.e(TAG, "Answer resolution failed", error)
@@ -818,7 +849,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     companion object {
         private const val TAG = "OverlayService"
         private const val SCREEN_READ_TIMEOUT_MS = 15_000L
-        private const val MAX_POWER_EXTRA_PAGES = 3
         private const val MAX_POWER_CAPTURE_CHARS = 20_000
         val isRunning = MutableStateFlow(false)
     }

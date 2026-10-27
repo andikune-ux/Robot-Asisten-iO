@@ -3,7 +3,10 @@ package dev.andikune.robotasisten.io.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
@@ -66,6 +70,7 @@ import dev.andikune.robotasisten.io.data.ai.RelxChatStore
 import dev.andikune.robotasisten.io.data.ai.RelxPendingChatRequest
 import dev.andikune.robotasisten.io.di.AppModule
 import dev.andikune.robotasisten.io.service.RelxChatReplyHelper
+import dev.andikune.robotasisten.io.util.AttachmentAnalyzer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,7 +91,20 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     var editingDraft by remember { mutableStateOf("") }
     var historyRevision by remember { mutableIntStateOf(0) }
+    var selectedAttachments by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var attachmentContext by remember { mutableStateOf("") }
+    var attachmentStatus by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach { uri ->
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+        selectedAttachments = uris
+        attachmentContext = ""
+        attachmentStatus = if (uris.isEmpty()) "" else "Menganalisa ${uris.size} lampiran secara offline…"
+    }
     val modeLabel = when (activeMode.uppercase()) {
         "AI_OFFLINE" -> "AI Offline"
         "AI_OPEN_KEY" -> "AI API Key"
@@ -99,6 +117,18 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
                 if (current.id == conversation.id) messages = current.messages
             }
             busy = false
+        }
+    }
+
+    LaunchedEffect(selectedAttachments) {
+        if (selectedAttachments.isEmpty()) return@LaunchedEffect
+        val results = selectedAttachments.map { AttachmentAnalyzer.analyze(context, it) }
+        attachmentContext = AttachmentAnalyzer.composeContext(results)
+        val warnings = results.count { it.warning.isNotBlank() }
+        attachmentStatus = if (warnings == 0) {
+            "${results.size} lampiran siap dianalisa AI Offline"
+        } else {
+            "${results.size} lampiran siap; $warnings memiliki catatan extractor"
         }
     }
 
@@ -135,12 +165,22 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
             Toast.makeText(context, "Pilih AI Offline atau AI API Key sebagai mode aktif di Beranda", Toast.LENGTH_LONG).show()
             return
         }
+        val messageWithAttachments = buildString {
+            append(text)
+            if (attachmentContext.isNotBlank()) {
+                append("\n\nAnalisa lampiran lokal:\n")
+                append(attachmentContext)
+            }
+        }.take(MAX_USER_MESSAGE_CHARS)
         val before = messages
-        val pending = before + RelxChatMessage(role = RelxChatStore.ROLE_USER, content = text)
+        val pending = before + RelxChatMessage(role = RelxChatStore.ROLE_USER, content = messageWithAttachments)
         messages = pending
         store.saveMessages(conversation.id, pending)
         draft = ""
-        requestReply(text, before, pending, conversation.id)
+        selectedAttachments = emptyList()
+        attachmentContext = ""
+        attachmentStatus = ""
+        requestReply(messageWithAttachments, before, pending, conversation.id)
     }
 
     fun regenerateFrom(userMessageId: String) {
@@ -250,6 +290,14 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
                 val lastIndex = messages.lastIndex + if (busy) 1 else 0
                 if (lastIndex >= 0) listState.animateScrollToItem(lastIndex)
             }
+            if (attachmentStatus.isNotBlank()) {
+                Text(
+                    attachmentStatus,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 verticalAlignment = Alignment.Bottom,
@@ -264,6 +312,9 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { sendMessage() })
                 )
+                IconButton(onClick = { attachmentPicker.launch(arrayOf("*/*")) }, enabled = !busy) {
+                    Icon(Icons.Default.AttachFile, contentDescription = "Tambah foto, video, atau dokumen")
+                }
                 IconButton(onClick = { sendMessage() }, enabled = draft.isNotBlank() && !busy) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Kirim pesan", tint = MaterialTheme.colorScheme.primary)
                 }
@@ -447,3 +498,5 @@ private fun copyText(context: Context, text: String) {
         Toast.makeText(context, "Bagian teks disalin", Toast.LENGTH_SHORT).show()
     }
 }
+
+private const val MAX_USER_MESSAGE_CHARS = 40_000

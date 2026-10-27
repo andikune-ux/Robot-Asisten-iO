@@ -67,7 +67,7 @@ fun PowerTaskPanel(
                 Switch(checked = autoReadContinuations, onCheckedChange = onAutoReadContinuationsChange)
                 Column(Modifier.weight(1f)) {
                     Text("Baca sambungan otomatis", style = MaterialTheme.typography.labelLarge)
-                    Text("RELX Power dapat menggulir maks. 3 layar tambahan lalu mencoba kembali ke posisi awal.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("RELX Power melanjutkan membaca sampai layar selesai atau tidak ada konten baru, lalu mencoba kembali ke posisi awal.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Spacer(Modifier.height(6.dp))
