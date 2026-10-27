@@ -29,7 +29,6 @@ class OfflineAi(
     suspend fun generateAnswer(question: String, selectedModelName: String): String? =
         generateChatReply(selectedModelName, emptyList(), question, DEFAULT_STUDY_PERSONA, "", "")
 
-    // PERBAIKAN #3: Thread Safety - Seluruh logika engine dipindahkan ke dalam mutex
     suspend fun generateChatReply(
         selectedModelName: String,
         history: List<Pair<String, String>>,
@@ -42,7 +41,7 @@ class OfflineAi(
         val modelSpec = modelDownloader.availableModels.firstOrNull {
             it.id.equals(selectedModelName, ignoreCase = true) ||
             it.name.equals(selectedModelName, ignoreCase = true) ||
-            (selectedModelName.equals("Qwen 2.5 0.5B", ignoreCase = true) && it.id == ModelDownloader.MODEL_ID)
+            (selectedModelName.equals("Qwen 2.5 0.5B", ignoreCase = true) && it.id == ModelDownloader.MODEL_ID_QWEN_0_5B)
         } ?: return@withContext null
 
         if (userMessage.isBlank() || !modelDownloader.isModelDownloaded(modelSpec)) {
@@ -78,4 +77,49 @@ class OfflineAi(
                     } else {
                         append("<|im_start|>system\n")
                         append(system)
-                        append("
+                        append("<|im_end|>n")
+                        history.takeLast(MAX_HISTORY_MESSAGES).forEach { (role, content) ->
+                            val safeRole = if (role == "assistant") "assistant" else "user"
+                            append("<|im_start|>$safeRole\n${content.take(MAX_MESSAGE_CHARS)}\n<|im_end|>\n")
+                        }
+                        append("<|im_start|>user\n${userMessage.take(MAX_MESSAGE_CHARS)}\n<|im_end|>\n<|im_start|>assistant\n")
+                    }
+                }
+
+                AiOutputSanitizer.clean(engine.generateResponse(prompt))
+            } catch (e: Exception) {
+                LogHelper.w("OfflineAi", "Inferensi MediaPipe gagal: ${e.message}")
+                null
+            }
+        }
+    }
+
+    private fun getEngine(file: File): LlmInference {
+        val path = file.absolutePath
+        cachedEngine?.let { 
+            if (cachedModelPath == path) return it 
+        }
+        
+        runCatching { cachedEngine?.close() }
+        cachedEngine = null
+        
+        val options = LlmInference.LlmInferenceOptions.builder()
+            .setModelPath(path)
+            .setMaxTokens(MAX_GENERATED_TOKENS)
+            .setMaxTopK(40)
+            .build()
+            
+        return LlmInference.createFromOptions(context.applicationContext, options).also {
+            cachedModelPath = path
+            cachedEngine = it
+        }
+    }
+
+    companion object {
+        private const val MAX_MESSAGE_CHARS = 4_000
+        private const val MAX_CONTEXT_CHARS = 2_000
+        private const val MAX_HISTORY_MESSAGES = 10
+        private const val MAX_GENERATED_TOKENS = 768
+        private const val DEFAULT_STUDY_PERSONA = "A clear, supportive tutor"
+    }
+}
