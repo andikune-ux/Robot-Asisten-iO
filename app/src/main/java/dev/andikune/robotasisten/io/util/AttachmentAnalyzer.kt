@@ -60,7 +60,7 @@ object AttachmentAnalyzer {
         } finally { bitmap.recycle() }
     }
 
-    private fun analyzePdf(resolver: android.content.ContentResolver, uri: Uri): String {
+    private suspend fun analyzePdf(resolver: android.content.ContentResolver, uri: Uri): String {
         val descriptor = resolver.openFileDescriptor(uri, "r") ?: return "PDF tidak dapat dibuka."
         descriptor.use { fd ->
             PdfRenderer(fd).use { renderer ->
