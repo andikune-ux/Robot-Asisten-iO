@@ -79,7 +79,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     private val overlayViewModelStore = ViewModelStore()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     
-    // PERBAIKAN #6: Gunakan AtomicLong untuk mencegah race condition operation ID
     private val operationId = java.util.concurrent.atomic.AtomicLong(0)
     private var operationJob: Job? = null
 
@@ -108,7 +107,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
     
     private data class ScreenReadResult(val text: String, val source: String)
 
-    // PERBAIKAN #9: Lifecycle Management yang Aman di onCreate
     override fun onCreate() {
         super.onCreate()
         savedStateRegistryController.performAttach()
@@ -126,7 +124,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                 throw IllegalStateException("Bubble tidak dapat dipasang")
             }
             
-            // Lifecycle HANYA dilanjutkan jika setup berhasil
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -415,7 +412,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         }.onFailure { LogHelper.e(TAG, "Could not update Power input focus", it) }
     }
 
-    // PERBAIKAN #5: State Restoration yang Robust di readScreenOrClipboard
     private suspend fun readScreenOrClipboard(): ScreenReadResult? {
         var accessibilityWasAvailable = false
         if (PermissionHelper.isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) {
@@ -447,7 +443,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
                     LogHelper.w(TAG, "Accessibility service is not connected; trying clipboard")
                 }
             } finally {
-                // PERBAIKAN #5: Null safety check sebelum restore state
                 runCatching {
                     if (previousBubbleAlpha != null && bubbleView?.parent != null) {
                         bubbleView?.alpha = previousBubbleAlpha
@@ -467,9 +462,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         }
     }
 
-    // ... LANJUTKAN KE BAGIAN 2 DI BAWAH INI ...
-}
-private suspend fun readPowerScreen(): ScreenReadResult? {
+    private suspend fun readPowerScreen(): ScreenReadResult? {
         val first = readScreenOrClipboard() ?: return null
         if (!autoReadContinuations.value || !PermissionHelper.isAccessibilityServiceEnabled(this, MyAccessibilityService::class.java)) return first
         val pages = mutableListOf(first.text.trim())
@@ -510,7 +503,7 @@ private suspend fun readPowerScreen(): ScreenReadResult? {
     private fun triggerPowerAnalyze() {
         if (isPowerBusy.value) return
         operationJob?.cancel()
-        val thisOperation = operationId.incrementAndGet() // PERBAIKAN #6: AtomicLong
+        val thisOperation = operationId.incrementAndGet()
         isPowerBusy.value = true
         bubbleStatus.value = BubbleStatus.ANALYZING
         powerResult.value = ""
@@ -575,7 +568,7 @@ private suspend fun readPowerScreen(): ScreenReadResult? {
 
     private fun triggerAnalyze(autoAnswer: Boolean) {
         operationJob?.cancel()
-        val thisOperation = operationId.incrementAndGet() // PERBAIKAN #6: AtomicLong
+        val thisOperation = operationId.incrementAndGet()
         setPowerPanelFocusable(false)
         currentAnalysis.value = null
         currentAnswer.value = null
@@ -628,7 +621,7 @@ private suspend fun readPowerScreen(): ScreenReadResult? {
 
     private fun triggerReadOcr() {
         operationJob?.cancel()
-        val thisOperation = operationId.incrementAndGet() // PERBAIKAN #6: AtomicLong
+        val thisOperation = operationId.incrementAndGet()
         setPowerPanelFocusable(false)
         currentAnalysis.value = null
         currentAnswer.value = null
@@ -666,7 +659,7 @@ private suspend fun readPowerScreen(): ScreenReadResult? {
 
     private fun triggerAnswerNow(question: DetectedQuestion) {
         operationJob?.cancel()
-        val thisOperation = operationId.incrementAndGet() // PERBAIKAN #6: AtomicLong
+        val thisOperation = operationId.incrementAndGet()
         bubbleStatus.value = BubbleStatus.ANSWERING
         currentAnswer.value = null
         currentOcrText.value = null
@@ -734,7 +727,7 @@ private suspend fun readPowerScreen(): ScreenReadResult? {
 
     private fun clearResult() {
         operationJob?.cancel()
-        operationId.incrementAndGet() // PERBAIKAN #6: Invalidate operasi lama
+        operationId.incrementAndGet()
         currentAnswer.value = null
         currentAnalysis.value = null
         currentOcrText.value = null
@@ -830,12 +823,10 @@ private suspend fun readPowerScreen(): ScreenReadResult? {
         return START_STICKY
     }
 
-    // PERBAIKAN #8: Lifecycle Cleanup yang Lengkap di onDestroy
     override fun onDestroy() {
         isRunning.value = false
         QuickSettingsTile.requestRefresh(this)
         
-        // Batalkan semua job dan tunggu selesai
         operationJob?.cancel()
         runBlocking { serviceScope.coroutineContext.job.cancelAndJoin() }
         
