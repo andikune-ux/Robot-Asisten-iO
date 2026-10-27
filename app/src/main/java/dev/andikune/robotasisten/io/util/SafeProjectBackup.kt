@@ -28,7 +28,7 @@ object SafeProjectBackup {
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val output = resolver.insert(collection, values)
-            ?: error("Android tidak dapat membuat berkas di Penyimpanan internal/$BACKUP_PATH")
+            ?: error("Android tidak dapat membuat berkas di Penyimpanan internal/sdcard/$BACKUP_PATH")
         try {
             resolver.openOutputStream(output, "w")?.use { stream ->
                 stream.write(buildReport(context).toByteArray(Charsets.UTF_8))
@@ -52,9 +52,9 @@ object SafeProjectBackup {
         check(root.canWrite()) { "Folder yang dipilih tidak mengizinkan penulisan" }
 
         val backupFolder = when {
-            root.name.equals("Backup aman", ignoreCase = true) -> root
-            root.name.equals("Relxio", ignoreCase = true) -> getOrCreateDirectory(root, "Backup aman")
-            else -> getOrCreateDirectory(getOrCreateDirectory(root, "Relxio"), "Backup aman")
+            root.name.equals(BACKUP_FOLDER, ignoreCase = true) -> root
+            root.name.equals(APP_FOLDER, ignoreCase = true) -> getOrCreateDirectory(root, BACKUP_FOLDER)
+            else -> getOrCreateDirectory(getOrCreateDirectory(root, APP_FOLDER), BACKUP_FOLDER)
         }
 
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
@@ -88,5 +88,7 @@ object SafeProjectBackup {
         return handoff + runtimeInfo
     }
 
-    private const val BACKUP_PATH = "Relxio/Backup aman"
+    private const val BACKUP_PATH = "RELXiO/backup aman"
+    private const val APP_FOLDER = "RELXiO"
+    private const val BACKUP_FOLDER = "backup aman"
 }

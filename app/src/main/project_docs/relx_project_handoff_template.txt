@@ -25,7 +25,7 @@ GAMBARAN FITUR DAN ALUR
 7. Mode Cloud memakai konfigurasi provider/model/endpoint HTTPS dan penyimpanan rahasia ApiKeyStore. Jangan pernah menaruh API key dalam source, log, atau berkas Backup Aman.
 8. Room menyimpan cache, aturan, riwayat, statistik, dan antrean AI. SettingsRepository menyimpan pengaturan aplikasi.
 9. CrashHandler menulis laporan exception fatal terakhir ke penyimpanan privat aplikasi. Saat aplikasi dibuka kembali, MainActivity menampilkan dialog untuk menyalin log dan kembali. Jika dialog ditutup, log masih dapat diakses dari Debug/Crash Report sampai pengguna menghapusnya.
-10. Backup Aman mengekspor dokumen teks ini, info runtime tidak rahasia, dan inventaris repository aktual. Inventaris dihasilkan otomatis pada setiap build oleh task Gradle dari struktur/file yang ada; file kunci, secrets, data privat, dan output build dikecualikan. Android 10+ mencoba membuat .txt di Penyimpanan internal/Relxio/Backup aman melalui MediaStore.Files scoped; jika perangkat membatasi folder root, aplikasi memakai SAF dan membuat subfolder Relxio/Backup aman di folder yang dipilih. Android 8–9 memakai SAF dengan grant terbatas. Fitur ini tidak mengekspor atau memulihkan data aplikasi.
+10. Backup Aman mengekspor dokumen teks ini, info runtime tidak rahasia, dan inventaris repository aktual. Inventaris dihasilkan otomatis pada setiap build oleh task Gradle dari struktur/file yang ada; file kunci, secrets, data privat, dan output build dikecualikan. Android 10+ mencoba membuat .txt di Penyimpanan internal/sdcard/RELXiO/backup aman melalui MediaStore.Files scoped; jika perangkat membatasi folder root, aplikasi memakai SAF dan membuat subfolder RELXiO/backup aman di folder yang dipilih. Android 8–9 memakai SAF dengan grant terbatas. Fitur ini tidak mengekspor atau memulihkan data aplikasi.
 11. RELX AI adalah halaman chat multi-turn untuk AI Offline atau AI API Key. Riwayat beberapa percakapan, persona, memory/knowledge, instruction, dan pilihan kedalaman disimpan lokal; pengguna dapat mengedit pesan lalu mengirim ulang atau meminta balasan ulang. Blok kode/template berpagar memiliki tombol salin per blok. Saat mode cloud dipakai, pesan, layar yang dikirim melalui RELX Power, dan memory yang dipilih dikirim ke provider API aktif; jangan masukkan rahasia.
 
 PERIZINAN ANDROID
@@ -36,7 +36,7 @@ PERIZINAN ANDROID
 - REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: pilihan agar sistem tidak mudah menghentikan overlay.
 - BIND_ACCESSIBILITY_SERVICE: Android mengikat service aksesibilitas; pengguna mengaktifkannya sendiri melalui Settings.
 - VIBRATE: feedback getar; implementasi harus tetap fail-safe bila hardware/izin bermasalah.
-- Backup Aman tidak meminta MANAGE_EXTERNAL_STORAGE atau READ/WRITE_EXTERNAL_STORAGE. Android 10+ mencoba MediaStore.Files dengan RELATIVE_PATH “Relxio/Backup aman”; bila perangkat membatasi folder root, aplikasi memakai ACTION_OPEN_DOCUMENT_TREE dengan grant URI baca/tulis terbatas dan persisten, lalu membuat subfolder Relxio/Backup aman di folder yang dipilih. Android 8–9 juga menggunakan ACTION_OPEN_DOCUMENT_TREE. Tidak ada akses diam-diam ke seluruh file.
+- Backup Aman tidak meminta MANAGE_EXTERNAL_STORAGE atau READ/WRITE_EXTERNAL_STORAGE. Android 10+ mencoba MediaStore.Files dengan RELATIVE_PATH “RELXiO/backup aman”; bila perangkat membatasi folder root, aplikasi memakai ACTION_OPEN_DOCUMENT_TREE dengan grant URI baca/tulis terbatas dan persisten, lalu membuat subfolder RELXiO/backup aman di folder yang dipilih. Android 8–9 juga menggunakan ACTION_OPEN_DOCUMENT_TREE. Tidak ada akses diam-diam ke seluruh file.
 
 PETA KODE SUMBER
 app/src/main/AndroidManifest.xml — identitas aplikasi, permissions, activity dan service.
@@ -68,7 +68,7 @@ PETUNJUK MELANJUTKAN PROYEK
 - Jangan commit keystore, API keys, nilai secrets, data pengguna, atau file build.
 - Jalankan ./gradlew testDebugUnitTest assembleDebug (workflow menguji test dan membuat artifact bertanda tangan stabil).
 - Periksa laporan crash nyata sebelum menyimpulkan akar masalah. Laporan ada di dialog awal setelah force close atau halaman Crash Report.
-- Untuk Backup Aman, gunakan MediaStore.Files pada Android 10+ untuk path “Relxio/Backup aman” dan SAF dengan persistable URI grant sebagai fallback bila perangkat menolak folder root maupun pada Android 8–9. Hindari izin storage luas.
+- Untuk Backup Aman, gunakan MediaStore.Files pada Android 10+ untuk path “RELXiO/backup aman” dan SAF dengan persistable URI grant sebagai fallback bila perangkat menolak folder root maupun pada Android 8–9. Hindari izin storage luas.
 - Bagian file aktual di akhir dokumen dihasilkan otomatis oleh Gradle pada build. Deskripsi arsitektur di template ini perlu ditinjau bila behavior utama berubah. Verifikasi commit dan isi file sebelum menjadikannya spesifikasi final.
 
 CATATAN PRIVASI

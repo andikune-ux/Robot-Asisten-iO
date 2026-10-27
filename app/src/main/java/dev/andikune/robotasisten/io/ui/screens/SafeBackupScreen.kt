@@ -45,14 +45,14 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
     }
     var status by remember {
         mutableStateOf(
-            if (usesScopedStorage) "Siap mengekspor langsung ke Penyimpanan internal/Relxio/Backup aman."
-            else "Pilih Penyimpanan internal pada pemilih folder. Aplikasi akan membuat Relxio/Backup aman di lokasi tersebut."
+            if (usesScopedStorage) "Siap mengekspor langsung ke Penyimpanan internal/sdcard/RELXiO/backup aman."
+            else "Pilih Penyimpanan internal/sdcard pada pemilih folder. Aplikasi akan membuat RELXiO/backup aman di lokasi tersebut."
         )
     }
     var exporting by remember { mutableStateOf(false) }
 
     fun showSuccess(output: Uri) {
-        status = "Backup berhasil dibuat: ${output.lastPathSegment?.substringAfterLast('/') ?: "file .txt"} di Penyimpanan internal/Relxio/Backup aman."
+        status = "Backup berhasil dibuat: ${output.lastPathSegment?.substringAfterLast('/') ?: "file .txt"} di Penyimpanan internal/sdcard/RELXiO/backup aman."
     }
 
     fun exportDirectly(onFallback: () -> Unit = {}) {
@@ -60,7 +60,7 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
         runCatching { SafeProjectBackup.export(context) }
             .onSuccess(::showSuccess)
             .onFailure { error ->
-                status = "Folder root dibatasi perangkat. Pilih folder yang diizinkan Android; aplikasi akan membuat Relxio/Backup aman di dalamnya."
+                status = "Pilih Penyimpanan internal/sdcard agar aplikasi dapat membuat RELXiO/backup aman."
                 onFallback()
             }
         exporting = false
@@ -71,7 +71,7 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
         runCatching { SafeProjectBackup.export(context, uri) }
             .onSuccess(::showSuccess)
             .onFailure { error ->
-            status = "Gagal membuat backup: ${error.message ?: "penyimpanan tidak dapat diakses"}. Pilih folder lain yang mengizinkan penulisan."
+                status = "Gagal membuat backup: ${error.message ?: "penyimpanan tidak dapat diakses"}. Pilih Penyimpanan internal/sdcard yang mengizinkan penulisan."
             }
         exporting = false
     }
@@ -119,13 +119,13 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                "Lokasi: Penyimpanan internal/Relxio/Backup aman/RELX-iO_BackupAman_[waktu].txt",
+                "Lokasi: Penyimpanan internal/sdcard/RELXiO/backup aman/RELX-iO_BackupAman_[waktu].txt",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
                 if (usesScopedStorage) {
-                    "Izin penyimpanan: aplikasi mencoba MediaStore terlebih dahulu. Jika perangkat membatasi folder root, pilih folder yang diizinkan Android; aplikasi membuat Relxio/Backup aman di dalam folder tersebut tanpa permission sensitif."
+                    "Izin penyimpanan: aplikasi mencoba MediaStore terlebih dahulu untuk Penyimpanan internal/sdcard/RELXiO/backup aman. Jika perangkat meminta SAF, pilih Penyimpanan internal/sdcard; aplikasi membuat folder tujuan tanpa permission sensitif."
                 } else {
                     "Izin penyimpanan: Android akan meminta Anda memilih folder. Persetujuan SAF memberi akses baca/tulis hanya ke folder pilihan dan disimpan untuk ekspor berikutnya; tidak diperlukan izin akses seluruh penyimpanan."
                 },
