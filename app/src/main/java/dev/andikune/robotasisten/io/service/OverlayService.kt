@@ -62,6 +62,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job // PERBAIKAN: Import ini wajib agar .job dikenali
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -828,6 +829,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         QuickSettingsTile.requestRefresh(this)
         
         operationJob?.cancel()
+        // PERBAIKAN: Menggunakan .job dari import kotlinx.coroutines.job
         runBlocking { serviceScope.coroutineContext.job.cancelAndJoin() }
         
         runCatching { if (bubbleView?.parent != null) windowManager?.removeViewImmediate(bubbleView) }
