@@ -2,7 +2,6 @@ package dev.andikune.robotasisten.io.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityService.ScreenshotResult
-import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.graphics.Bitmap
 import android.hardware.HardwareBuffer
 import android.os.Build
@@ -10,7 +9,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Display
-import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import dev.andikune.robotasisten.io.util.LogHelper
@@ -23,11 +21,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Screen access is performed only when the user explicitly asks the overlay to read a screen
- * or fill a focused field. No screen text is retained between requests.
- */
 class MyAccessibilityService : AccessibilityService() {
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -37,8 +32,7 @@ class MyAccessibilityService : AccessibilityService() {
         LogHelper.i(TAG, "Accessibility screen actions connected")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
-
+    override fun onAccessibilityEvent(event: android.view.accessibility.AccessibilityEvent?) = Unit
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
@@ -47,14 +41,7 @@ class MyAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
-    private fun requestScreenText(callback: (Result<String>) -> Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            captureScreenshot(callback)
-        } else {
-            callback(runCatching { readActiveWindowText() })
-        }
-    }
-
+    // PERBAIKAN #1: Race Condition pada Callback Screenshot
     private fun captureScreenshot(callback: (Result<String>) -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             callback(runCatching { readActiveWindowText() })
@@ -64,7 +51,7 @@ class MyAccessibilityService : AccessibilityService() {
         val completed = AtomicBoolean(false)
         val timeout = Runnable {
             if (completed.compareAndSet(false, true)) {
-                callback(accessibilityTextOrFailure(IllegalStateException("Tangkapan layar melewati batas waktu")))
+                callback(Result.failure(IllegalStateException("Tangkapan layar melewati batas waktu")))
             }
         }
         mainHandler.postDelayed(timeout, SCREENSHOT_TIMEOUT_MS)
@@ -77,14 +64,16 @@ class MyAccessibilityService : AccessibilityService() {
                         return
                     }
                     mainHandler.removeCallbacks(timeout)
+                    
                     try {
                         val buffer = result.hardwareBuffer
                         val wrapped = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
                         val bitmap = wrapped?.copy(Bitmap.Config.ARGB_8888, false)
                         runCatching { wrapped?.recycle() }
                         buffer.closeSafely()
+
                         if (bitmap == null) {
-                            callback(Result.failure(IllegalStateException("Gagal membaca frame layar")))
+                            callback(accessibilityTextOrFailure(IllegalStateException("Gagal membaca frame layar")))
                         } else {
                             serviceScope.launch {
                                 val recognized = try {
@@ -96,10 +85,12 @@ class MyAccessibilityService : AccessibilityService() {
                                 } finally {
                                     bitmap.recycle()
                                 }
-                                val finalResult = if (recognized.getOrNull().isNullOrBlank()) {
-                                    accessibilityTextOrFailure(IllegalStateException("OCR tidak menemukan teks"))
-                                } else recognized
-                                callback(finalResult)
+
+                                if (recognized.isFailure || recognized.getOrNull().isNullOrBlank()) {
+                                    callback(accessibilityTextOrFailure(recognized.exceptionOrNull() ?: IllegalStateException("OCR kosong")))
+                                } else {
+                                    callback(recognized)
+                                }
                             }
                         }
                     } catch (error: Exception) {
@@ -123,6 +114,31 @@ class MyAccessibilityService : AccessibilityService() {
         }
     }
 
+    // PERBAIKAN #2: Memory Leak & Circular Reference pada Node Collection
+    private fun collectNodeText(node: AccessibilityNodeInfo, output: MutableSet<String>, depth: Int, visited: MutableSet<Int> = mutableSetOf()) {
+        if (depth > MAX_NODE_DEPTH || output.sumOf { it.length } >= MAX_CAPTURE_CHARS) return
+        
+        val nodeId = System.identityHashCode(node)
+        if (visited.contains(nodeId)) return 
+        visited.add(nodeId)
+
+        try {
+            val label = (node.text ?: node.contentDescription)?.toString()?.trim().orEmpty()
+            if (label.isNotEmpty()) output.add(label)
+            
+            for (index in 0 until node.childCount) {
+                val child = node.getChild(index) ?: continue
+                try {
+                    collectNodeText(child, output, depth + 1, visited)
+                } finally {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) child.recycle()
+                }
+            }
+        } finally {
+            visited.remove(nodeId)
+        }
+    }
+
     private fun accessibilityTextOrFailure(error: Throwable): Result<String> {
         val text = runCatching { readActiveWindowText() }.getOrDefault("")
         return if (text.isNotBlank()) Result.success(text) else Result.failure(error)
@@ -133,20 +149,6 @@ class MyAccessibilityService : AccessibilityService() {
         val collected = LinkedHashSet<String>()
         collectNodeText(root, collected, depth = 0)
         return collected.joinToString("\n").take(MAX_CAPTURE_CHARS)
-    }
-
-    private fun collectNodeText(node: AccessibilityNodeInfo, output: MutableSet<String>, depth: Int) {
-        if (depth > MAX_NODE_DEPTH || output.sumOf { it.length } >= MAX_CAPTURE_CHARS) return
-        val label = (node.text ?: node.contentDescription)?.toString()?.trim().orEmpty()
-        if (label.isNotEmpty()) output.add(label)
-        for (index in 0 until node.childCount) {
-            val child = node.getChild(index) ?: continue
-            try {
-                collectNodeText(child, output, depth + 1)
-            } finally {
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) child.recycle()
-            }
-        }
     }
 
     private fun fillFocusedText(text: String): Boolean {
@@ -203,14 +205,12 @@ class MyAccessibilityService : AccessibilityService() {
         @Volatile
         private var connectedService: MyAccessibilityService? = null
 
-        /** Returns false if accessibility is not enabled; otherwise calls back exactly once. */
         fun requestScreenText(callback: (Result<String>) -> Unit): Boolean {
             val service = connectedService ?: return false
-            service.mainHandler.post { service.requestScreenText(callback) }
+            service.mainHandler.post { service.captureScreenshot(callback) }
             return true
         }
 
-        /** Returns false when no enabled service or editable focused target is available. */
         fun fillFocusedField(text: String, callback: (Boolean) -> Unit): Boolean {
             val service = connectedService ?: return false
             service.mainHandler.post {
@@ -219,7 +219,6 @@ class MyAccessibilityService : AccessibilityService() {
             return true
         }
 
-        /** Scrolls one accessible container only after a direct user tap in RELX Power. */
         fun scrollActiveWindowOnce(forward: Boolean, callback: (Boolean) -> Unit): Boolean {
             val service = connectedService ?: return false
             service.mainHandler.post {
