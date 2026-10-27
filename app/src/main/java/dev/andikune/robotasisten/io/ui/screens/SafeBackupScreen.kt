@@ -55,12 +55,13 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
         status = "Backup berhasil dibuat: ${output.lastPathSegment?.substringAfterLast('/') ?: "file .txt"} di Penyimpanan internal/Relxio/Backup aman."
     }
 
-    fun exportDirectly() {
+    fun exportDirectly(onFallback: () -> Unit = {}) {
         exporting = true
         runCatching { SafeProjectBackup.export(context) }
             .onSuccess(::showSuccess)
             .onFailure { error ->
-                status = "Gagal membuat backup: ${error.message ?: "penyimpanan tidak dapat diakses"}."
+                status = "Folder root dibatasi perangkat. Pilih folder yang diizinkan Android; aplikasi akan membuat Relxio/Backup aman di dalamnya."
+                onFallback()
             }
         exporting = false
     }
@@ -70,7 +71,7 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
         runCatching { SafeProjectBackup.export(context, uri) }
             .onSuccess(::showSuccess)
             .onFailure { error ->
-                status = "Gagal membuat backup: ${error.message ?: "penyimpanan tidak dapat diakses"}. Pilih ulang folder dan izinkan akses."
+            status = "Gagal membuat backup: ${error.message ?: "penyimpanan tidak dapat diakses"}. Pilih folder lain yang mengizinkan penulisan."
             }
         exporting = false
     }
@@ -93,7 +94,7 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
     }
 
     fun startExport() {
-        if (usesScopedStorage) exportDirectly() else folderPicker.launch(null)
+        if (usesScopedStorage) exportDirectly { folderPicker.launch(null) } else folderPicker.launch(null)
     }
 
     Scaffold(
@@ -124,7 +125,7 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
             )
             Text(
                 if (usesScopedStorage) {
-                    "Izin penyimpanan: Android 10+ menggunakan MediaStore scoped untuk membuat file milik aplikasi pada folder di atas. Tidak perlu meminta akses seluruh penyimpanan atau permission sensitif."
+                    "Izin penyimpanan: aplikasi mencoba MediaStore terlebih dahulu. Jika perangkat membatasi folder root, pilih folder yang diizinkan Android; aplikasi membuat Relxio/Backup aman di dalam folder tersebut tanpa permission sensitif."
                 } else {
                     "Izin penyimpanan: Android akan meminta Anda memilih folder. Persetujuan SAF memberi akses baca/tulis hanya ke folder pilihan dan disimpan untuk ekspor berikutnya; tidak diperlukan izin akses seluruh penyimpanan."
                 },
@@ -142,7 +143,7 @@ fun SafeBackupScreen(onNavigateBack: () -> Unit) {
             }
             OutlinedButton(
                 onClick = {
-                    if (usesScopedStorage) exportDirectly()
+                    if (usesScopedStorage) exportDirectly { folderPicker.launch(null) }
                     else selectedTree?.let(::exportToTree) ?: folderPicker.launch(null)
                 },
                 enabled = !exporting && (usesScopedStorage || selectedTree != null),

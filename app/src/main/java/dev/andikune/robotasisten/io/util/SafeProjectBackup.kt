@@ -45,11 +45,8 @@ object SafeProjectBackup {
         }
     }
 
-    /** Android 8–9 fallback: use the explicitly selected directory tree. */
+    /** SAF fallback for devices that restrict direct MediaStore folders, including Android 10+. */
     fun export(context: Context, selectedTree: Uri): Uri {
-        check(Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            "Gunakan ekspor scoped storage pada Android 10 dan yang lebih baru"
-        }
         val root = DocumentFile.fromTreeUri(context, selectedTree)
             ?: error("Folder yang dipilih tidak dapat dibuka")
         check(root.canWrite()) { "Folder yang dipilih tidak mengizinkan penulisan" }
