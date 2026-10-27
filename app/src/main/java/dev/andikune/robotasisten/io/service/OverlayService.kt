@@ -10,9 +10,14 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
@@ -28,20 +33,20 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import dev.andikune.robotasisten.io.MainActivity
 import dev.andikune.robotasisten.io.R
+import dev.andikune.robotasisten.io.data.ai.RelxChatStore
 import dev.andikune.robotasisten.io.di.AppModule
-import dev.andikune.robotasisten.io.logic.AutoFillResult
 import dev.andikune.robotasisten.io.logic.AutoFillEngine
+import dev.andikune.robotasisten.io.logic.AutoFillResult
 import dev.andikune.robotasisten.io.logic.DetectedQuestion
 import dev.andikune.robotasisten.io.logic.QuestionDetector
 import dev.andikune.robotasisten.io.logic.ResolutionResult
-import dev.andikune.robotasisten.io.data.ai.RelxChatStore
 import dev.andikune.robotasisten.io.navigation.Routes
 import dev.andikune.robotasisten.io.ui.overlay.AnalysisPreviewCard
 import dev.andikune.robotasisten.io.ui.overlay.AnswerPreviewCard
 import dev.andikune.robotasisten.io.ui.overlay.BubbleStatus
+import dev.andikune.robotasisten.io.ui.overlay.OcrPreviewCard
 import dev.andikune.robotasisten.io.ui.overlay.OverlayBubble
 import dev.andikune.robotasisten.io.ui.overlay.OverlayMenuPanel
-import dev.andikune.robotasisten.io.ui.overlay.OcrPreviewCard
 import dev.andikune.robotasisten.io.ui.overlay.PowerTaskPanel
 import dev.andikune.robotasisten.io.ui.theme.RAiOTheme
 import dev.andikune.robotasisten.io.util.ClipboardHelper
@@ -51,26 +56,19 @@ import dev.andikune.robotasisten.io.util.LogHelper
 import dev.andikune.robotasisten.io.util.PermissionHelper
 import dev.andikune.robotasisten.io.util.SoundHelper
 import dev.andikune.robotasisten.io.util.ToastHelper
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.job // PERBAIKAN: Import ini wajib agar .job dikenali
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import android.view.inputmethod.InputMethodManager
-import android.util.DisplayMetrics
 import kotlin.math.min
 
 class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
@@ -829,8 +827,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner, ViewM
         QuickSettingsTile.requestRefresh(this)
         
         operationJob?.cancel()
-        // PERBAIKAN: Menggunakan .job dari import kotlinx.coroutines.job
-        runBlocking { serviceScope.coroutineContext.job.cancelAndJoin() }
+        serviceScope.cancel()
         
         runCatching { if (bubbleView?.parent != null) windowManager?.removeViewImmediate(bubbleView) }
         runCatching { if (panelView?.parent != null) windowManager?.removeViewImmediate(panelView) }
