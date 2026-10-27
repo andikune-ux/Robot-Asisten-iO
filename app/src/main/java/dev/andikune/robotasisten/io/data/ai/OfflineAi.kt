@@ -38,10 +38,11 @@ class OfflineAi(
         instructions: String,
         reasoningDepth: String = "balanced"
     ): String? = withContext(Dispatchers.IO) {
+        // PERBAIKAN: Menggunakan ModelDownloader.MODEL_ID sesuai konstanta asli di repo Anda
         val modelSpec = modelDownloader.availableModels.firstOrNull {
             it.id.equals(selectedModelName, ignoreCase = true) ||
             it.name.equals(selectedModelName, ignoreCase = true) ||
-            (selectedModelName.equals("Qwen 2.5 0.5B", ignoreCase = true) && it.id == ModelDownloader.MODEL_ID_QWEN_0_5B)
+            (selectedModelName.equals("Qwen 2.5 0.5B", ignoreCase = true) && it.id == ModelDownloader.MODEL_ID)
         } ?: return@withContext null
 
         if (userMessage.isBlank() || !modelDownloader.isModelDownloaded(modelSpec)) {
@@ -77,7 +78,7 @@ class OfflineAi(
                     } else {
                         append("<|im_start|>system\n")
                         append(system)
-                        append("<|im_end|>n")
+                        append("<|im_end|>\n")
                         history.takeLast(MAX_HISTORY_MESSAGES).forEach { (role, content) ->
                             val safeRole = if (role == "assistant") "assistant" else "user"
                             append("<|im_start|>$safeRole\n${content.take(MAX_MESSAGE_CHARS)}\n<|im_end|>\n")
