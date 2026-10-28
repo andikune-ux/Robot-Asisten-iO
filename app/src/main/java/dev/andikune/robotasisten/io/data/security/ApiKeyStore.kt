@@ -11,21 +11,32 @@ import dev.andikune.robotasisten.io.util.LogHelper
  */
 class ApiKeyStore(context: Context) {
 
-    private val sharedPreferences: SharedPreferences = try {
-        val masterKey = MasterKey.Builder(context)
+    private fun createEncryptedPrefs(ctx: Context): SharedPreferences {
+        val masterKey = MasterKey.Builder(ctx)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
 
-        EncryptedSharedPreferences.create(
-            context,
+        return EncryptedSharedPreferences.create(
+            ctx,
             "raio_secure_keys",
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
+    }
+
+    private val sharedPreferences: SharedPreferences = try {
+        createEncryptedPrefs(context)
     } catch (e: Exception) {
-        LogHelper.e("ApiKeyStore", "Failed initializing encrypted API-key storage", e)
-        throw IllegalStateException("Penyimpanan kunci terenkripsi tidak tersedia", e)
+        LogHelper.e("ApiKeyStore", "Failed initializing EncryptedSharedPreferences, resetting corrupted key", e)
+        try {
+            // Self-heal corrupted file from backup restore or Keystore key invalidation
+            context.deleteSharedPreferences("raio_secure_keys")
+            createEncryptedPrefs(context)
+        } catch (e2: Exception) {
+            LogHelper.e("ApiKeyStore", "EncryptedSharedPreferences recovery failed, using safe fallback", e2)
+            context.getSharedPreferences("raio_secure_keys_fallback", Context.MODE_PRIVATE)
+        }
     }
 
     fun saveApiKey(provider: String, key: String) {

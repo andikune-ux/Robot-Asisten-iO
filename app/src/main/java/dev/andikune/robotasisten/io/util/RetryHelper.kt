@@ -1,41 +1,29 @@
 package dev.andikune.robotasisten.io.util
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 /**
- * Utility untuk retry dengan exponential backoff.
- * Digunakan pada ModelDownloader dan koneksi Cloud AI untuk menangani kegagalan jaringan sementara.
+ * Exponential backoff retry utility for resilient network calls.
  */
 object RetryHelper {
-    
-    /**
-     * Menjalankan blok kode dengan mekanisme retry otomatis.
-     * @param maxRetries Jumlah maksimal percobaan ulang (default: 3)
-     * @param initialDelay Delay awal dalam milidetik (default: 1000ms)
-     * @param maxDelay Delay maksimal antar percobaan (default: 10000ms)
-     * @param factor Faktor pengali delay (default: 2.0x)
-     * @param block Blok suspend yang akan dieksekusi
-     */
-    suspend fun <T> withExponentialBackoff(
-        maxRetries: Int = 3,
-        initialDelay: Long = 1000L,
-        maxDelay: Long = 10000L,
+    suspend fun <T> retryWithBackoff(
+        times: Int = 3,
+        initialDelayMs: Long = 1000,
         factor: Double = 2.0,
         block: suspend () -> T
     ): T {
-        var currentDelay = initialDelay
-        var lastException: Exception? = null
-        
-        repeat(maxRetries) { attempt ->
+        var currentDelay = initialDelayMs
+        repeat(times - 1) { attempt ->
             try {
                 return block()
             } catch (e: Exception) {
-                lastException = e
-                LogHelper.w("RetryHelper", "Percobaan ${attempt + 1}/$maxRetries gagal: ${e.message}. Menunggu ${currentDelay}ms...")
+                if (e is CancellationException) throw e
+                LogHelper.w("RetryHelper", "Attempt ${attempt + 1} failed: ${e.message}, retrying in $currentDelay ms...")
                 delay(currentDelay)
-                currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelay)
+                currentDelay = (currentDelay * factor).toLong()
             }
         }
-        throw lastException ?: IllegalStateException("Percobaan gagal setelah $maxRetries kali")
+        return block()
     }
 }
