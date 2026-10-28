@@ -362,7 +362,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 }
                 dev.andikune.robotasisten.io.logic.AutoFillResult.FAILED -> {
                     ToastHelper.showShort(this, "Gagal mengisi jawaban")
-                    HapticHelper.vibrateError(this)
+                    HapticHelper.vibrateClick(this)
                 }
             }
             currentAnswer.value = null
