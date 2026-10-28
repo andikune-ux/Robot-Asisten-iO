@@ -174,6 +174,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             setContent {
                 val settings = AppModule.provideSettingsRepository(this@OverlayService)
                 val activeMode by settings.activeMode.collectAsState()
+                val confirmBeforeFill by settings.confirmBeforeFill.collectAsState()
 
                 RAiOTheme {
                     when {
@@ -217,6 +218,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                         isMenuOpen.value -> {
                             OverlayMenuPanel(
                                 activeMode = activeMode,
+                                confirmBeforeFill = confirmBeforeFill,
                                 onAnalyze = {
                                     isMenuOpen.value = false
                                     updatePanelVisibility()
@@ -232,6 +234,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                                     updatePanelVisibility()
                                     ToastHelper.showShort(context, "📸 Mode Visual Siap")
                                     triggerAnalyze()
+                                },
+                                onOpenPower = {
+                                    isMenuOpen.value = false
+                                    updatePanelVisibility()
+                                    openApp()
                                 },
                                 onOpenHistory = {
                                     isMenuOpen.value = false
