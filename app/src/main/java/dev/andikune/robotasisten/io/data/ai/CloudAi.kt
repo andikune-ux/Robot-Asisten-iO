@@ -89,7 +89,7 @@ class CloudAi(
                 if (code in 200..299) {
                     Result.success(true)
                 } else if (code in 400..403) {
-                    LogHelper.w("CloudAi", "Key validation failed (HTTP $code): $responseBody")
+                    LogHelper.w("CloudAi", "Key validation failed (HTTP $code)")
                     Result.failure(Exception("API Key ditolak (HTTP $code). Periksa kembali kunci Anda."))
                 } else {
                     Result.success(true)
@@ -228,7 +228,7 @@ class CloudAi(
                 }
             }
         }
-        LogHelper.w("CloudAi", "Gemini HTTP error ${response.code}: $responseBody")
+        LogHelper.w("CloudAi", "Gemini HTTP error ${response.code}")
         return null
     }
 
@@ -338,7 +338,7 @@ class CloudAi(
                 return text.trim()
             }
         }
-        LogHelper.w("CloudAi", "Claude HTTP error ${response.code}: $responseBody")
+        LogHelper.w("CloudAi", "Claude HTTP error ${response.code}")
         return null
     }
 
@@ -446,7 +446,7 @@ class CloudAi(
                 return content?.trim()
             }
         }
-        LogHelper.w("CloudAi", "OpenAI HTTP error ${response.code}: $responseBody")
+        LogHelper.w("CloudAi", "OpenAI HTTP error ${response.code}")
         return null
     }
 

@@ -28,14 +28,13 @@ class ApiKeyStore(context: Context) {
     private val sharedPreferences: SharedPreferences = try {
         createEncryptedPrefs(context)
     } catch (e: Exception) {
-        LogHelper.e("ApiKeyStore", "Failed initializing EncryptedSharedPreferences, resetting corrupted key", e)
+        LogHelper.e("ApiKeyStore", "Failed initializing EncryptedSharedPreferences, attempting reset", e)
         try {
-            // Self-heal corrupted file from backup restore or Keystore key invalidation
             context.deleteSharedPreferences("raio_secure_keys")
             createEncryptedPrefs(context)
         } catch (e2: Exception) {
-            LogHelper.e("ApiKeyStore", "EncryptedSharedPreferences recovery failed, using safe fallback", e2)
-            context.getSharedPreferences("raio_secure_keys_fallback", Context.MODE_PRIVATE)
+            LogHelper.e("ApiKeyStore", "EncryptedSharedPreferences recovery failed", e2)
+            throw IllegalStateException("Tidak dapat menginisialisasi penyimpanan kunci terenkripsi", e2)
         }
     }
 

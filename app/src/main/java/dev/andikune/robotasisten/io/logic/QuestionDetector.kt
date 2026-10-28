@@ -16,7 +16,7 @@ object QuestionDetector {
     private val BLANK_REGEX = "(__{2,}|\\.{3,}|\\[\\s*\\]|titik-titik|isian di bawah)".toRegex(RegexOption.IGNORE_CASE)
     private val ESSAY_REGEX = "(jelaskan|uraikan|mengapa|bagaimana|apa alasan|analisislah|sebutkan dan jelaskan)".toRegex(RegexOption.IGNORE_CASE)
     private val QUESTION_MARKER_REGEX = "(\\?|\\b(apa|apakah|siapa|kapan|dimana|di mana|mengapa|bagaimana|berapa|manakah|pilih|tentukan|hitung|jelaskan|uraikan|sebutkan|what|which|who|whom|whose|when|where|why|how|calculate|solve|explain|describe|compare|define|identify|name|find|que|quien|quién|cuando|cuándo|donde|dónde|por que|por qué|como|cómo|cuanto|cuánto|calcula|resuelve|explica|quelle|quel|qui|quand|pourquoi|comment|combien|berechne|erklare|erkläre|warum|wann|wo|was|quem|quando|porque|quanto|calcule|o que|chi|quando|perché|come|quale)\\b)".toRegex(RegexOption.IGNORE_CASE)
-    private val optionRegex = "^[A-Ea-e][.)]\\s*(.+)$".toRegex()
+    private val optionRegex = "^([A-Za-z]|[0-9]{1,2})[.)]\\s*(.+)$".toRegex()
     private val chromeLineRegex = "^(home|beranda|riwayat|pengaturan|settings?|menu|kembali|batal|tutup|kirim|salin|mulai|berhenti|relx\\s*ai|relx\\.io)$".toRegex(RegexOption.IGNORE_CASE)
 
     fun isLikelyQuestion(text: String): Boolean {

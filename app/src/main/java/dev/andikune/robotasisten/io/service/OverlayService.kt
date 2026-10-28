@@ -31,6 +31,7 @@ import dev.andikune.robotasisten.io.MainActivity
 import dev.andikune.robotasisten.io.R
 import dev.andikune.robotasisten.io.di.AppModule
 import dev.andikune.robotasisten.io.logic.AutoFillEngine
+import dev.andikune.robotasisten.io.logic.AutoFillResult
 import dev.andikune.robotasisten.io.logic.DetectedQuestion
 import dev.andikune.robotasisten.io.logic.QuestionDetector
 import dev.andikune.robotasisten.io.logic.ResolutionResult
@@ -349,9 +350,21 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     private fun fillAnswerNow(answerText: String) {
-        AutoFillEngine.fillAnswer(this, answerText) { success ->
-            ToastHelper.showShort(this, "📋 Jawaban disalin ke clipboard: $answerText")
-            HapticHelper.vibrateSuccess(this)
+        AutoFillEngine.fillAnswer(this, answerText) { result ->
+            when (result) {
+                AutoFillResult.FILLED -> {
+                    ToastHelper.showShort(this, "✅ Jawaban dimasukkan ke kolom")
+                    HapticHelper.vibrateSuccess(this)
+                }
+                dev.andikune.robotasisten.io.logic.AutoFillResult.COPIED_TO_CLIPBOARD -> {
+                    ToastHelper.showShort(this, "📋 Jawaban disalin ke clipboard")
+                    HapticHelper.vibrateClick(this)
+                }
+                dev.andikune.robotasisten.io.logic.AutoFillResult.FAILED -> {
+                    ToastHelper.showShort(this, "Gagal mengisi jawaban")
+                    HapticHelper.vibrateError(this)
+                }
+            }
             currentAnswer.value = null
             bubbleStatus.value = BubbleStatus.IDLE
             updatePanelVisibility()
