@@ -46,7 +46,9 @@ import dev.andikune.robotasisten.io.ui.overlay.OverlayBubble
 import dev.andikune.robotasisten.io.ui.overlay.OverlayMenuPanel
 import dev.andikune.robotasisten.io.ui.overlay.RuntimeStep
 import dev.andikune.robotasisten.io.ui.theme.RAiOTheme
+import android.util.Log
 import dev.andikune.robotasisten.io.util.ClipboardHelper
+import dev.andikune.robotasisten.io.util.CrashHandler
 import dev.andikune.robotasisten.io.util.HapticHelper
 import dev.andikune.robotasisten.io.util.LogHelper
 import dev.andikune.robotasisten.io.util.SoundHelper
@@ -67,7 +69,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val serviceScope by lazy {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main + CrashHandler.createCoroutineExceptionHandler("OverlayService", this))
+    }
 
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val savedStateRegistry: SavedStateRegistry get() = savedStateRegistryController.savedStateRegistry
@@ -103,6 +107,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onCreate() {
         super.onCreate()
+        CrashHandler.init(this)
         savedStateRegistryController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         isRunning.value = true
@@ -403,11 +408,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             } catch (e: CancellationException) {
                 LogHelper.i("OverlayService", "Automation job cancelled")
                 throw e
-            } catch (e: Exception) {
-                LogHelper.e("OverlayService", "Automation error: ${e.message}", e)
+            } catch (t: Throwable) {
+                Log.e(CrashHandler.TAG_DEBUG, "Error di [Pemindaian Layar Overlay ${tool.displayName}]: ${t.message}", t)
+                CrashHandler.recordCrash(this@OverlayService, "Pemindaian Layar Overlay (${tool.displayName})", t)
+                LogHelper.e("OverlayService", "Automation error: ${t.message}", t)
                 bubbleStatus.value = BubbleStatus.ERROR
-                minimizedStatusText.value = "Terjadi kendala automasi: ${e.message?.take(30)}"
-                ToastHelper.showShort(this@OverlayService, "Automasi terhenti: ${e.message}")
+                minimizedStatusText.value = "Terjadi kendala automasi: ${t.message?.take(30)}"
+                ToastHelper.showShort(this@OverlayService, "Automasi terhenti: ${t.message}")
             }
         }
     }

@@ -3,14 +3,16 @@ package dev.andikune.robotasisten.io.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import dev.andikune.robotasisten.io.R
 import dev.andikune.robotasisten.io.di.AppModule
-import dev.andikune.robotasisten.io.util.Constants
+import dev.andikune.robotasisten.io.util.CrashHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,45 +22,62 @@ class OfflineModelDownloadWorker(
     appContext: Context,
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
-    override suspend fun doWork(): Result {
-        val modelId = inputData.getString(KEY_MODEL_ID) ?: return Result.failure()
-        val downloader = AppModule.provideModelDownloader(applicationContext)
-        val model = downloader.availableModels.firstOrNull { it.id == modelId } ?: return Result.failure()
-        createChannel()
-        promoteToForeground(createForegroundInfo(model.name, 0, "Memulai unduhan..."))
 
-        val monitorJob = CoroutineScope(Dispatchers.Default).launch {
-            downloader.downloadProgressInfo.collect { map ->
-                val info = map[model.id]
-                if (info != null) {
-                    val statusText = if (info.isVerifying) {
-                        "Memverifikasi integritas hash SHA-256 (100%)..."
-                    } else {
-                        "${info.percent}% · ${info.speedText}"
-                    }
-                    runCatching {
-                        promoteToForeground(createForegroundInfo(model.name, info.percent, statusText))
+    override suspend fun doWork(): Result {
+        val ceh = CrashHandler.createCoroutineExceptionHandler("OfflineModelDownloadWorker", applicationContext)
+        val modelId = inputData.getString(KEY_MODEL_ID) ?: return Result.failure()
+
+        return try {
+            val downloader = AppModule.provideModelDownloader(applicationContext)
+            val model = downloader.availableModels.firstOrNull { it.id == modelId } ?: return Result.failure()
+            createChannel()
+            promoteToForeground(createForegroundInfo(model.name, 0, "Memulai unduhan..."))
+
+            val monitorJob = CoroutineScope(Dispatchers.Default + ceh).launch {
+                downloader.downloadProgressInfo.collect { map ->
+                    val info = map[model.id]
+                    if (info != null) {
+                        val statusText = if (info.isVerifying) {
+                            "Memverifikasi integritas hash SHA-256 (100%)..."
+                        } else {
+                            "${info.percent}% · ${info.speedText}"
+                        }
+                        runCatching {
+                            promoteToForeground(createForegroundInfo(model.name, info.percent, statusText))
+                        }.onFailure { err ->
+                            Log.e(CrashHandler.TAG_DEBUG, "Error di [Update Notifikasi Download]: ${err.message}", err)
+                        }
                     }
                 }
             }
-        }
 
-        var succeeded = false
-        try {
-            downloader.startDownload(model) { result -> succeeded = result }
-        } finally {
-            monitorJob.cancel()
-        }
+            var succeeded = false
+            try {
+                downloader.startDownload(model) { result -> succeeded = result }
+            } finally {
+                monitorJob.cancel()
+            }
 
-        if (succeeded) AppModule.provideSettingsRepository(applicationContext).setSelectedOfflineModel(model.id)
-        return if (succeeded) Result.success() else retryOrFailure()
+            if (succeeded) {
+                AppModule.provideSettingsRepository(applicationContext).setSelectedOfflineModel(model.id)
+            }
+            if (succeeded) Result.success() else retryOrFailure()
+        } catch (t: Throwable) {
+            Log.e(CrashHandler.TAG_DEBUG, "Error di [Download Model Offline - Worker]: ${t.message}", t)
+            CrashHandler.recordCrash(applicationContext, "Download Model Offline", t)
+            Result.failure()
+        }
     }
 
     private fun retryOrFailure(): Result =
         if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.failure()
 
     private suspend fun promoteToForeground(info: ForegroundInfo) {
-        setForegroundAsync(info).get()
+        runCatching {
+            setForeground(info)
+        }.onFailure { e ->
+            Log.e(CrashHandler.TAG_DEBUG, "Error di [Promote Foreground Service Download]: ${e.message}", e)
+        }
     }
 
     private fun createForegroundInfo(modelName: String, progress: Int, detailText: String): ForegroundInfo {
@@ -70,7 +89,12 @@ class OfflineModelDownloadWorker(
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-        return ForegroundInfo(NOTIFICATION_ID, notification)
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun createChannel() {

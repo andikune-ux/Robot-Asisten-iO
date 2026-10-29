@@ -17,17 +17,22 @@ object OcrHelper {
     suspend fun recognizeText(bitmap: Bitmap): Result<String> {
         return suspendCancellableCoroutine { continuation ->
             try {
+                if (bitmap.isRecycled) {
+                    continuation.resumeSafely(Result.failure(IllegalStateException("Bitmap sudah di-recycle")))
+                    return@suspendCancellableCoroutine
+                }
                 val image = InputImage.fromBitmap(bitmap, 0)
                 recognizer.process(image)
                     .addOnSuccessListener { visionText ->
                         continuation.resumeSafely(Result.success(visionText.text))
                     }
                     .addOnFailureListener { e ->
-                        LogHelper.e("OcrHelper", "OCR recognition failed", e)
+                        android.util.Log.e("RAILX_CRASH_DEBUG", "Error di [ML Kit Text Recognition onFailure]: ${e.message}", e)
                         continuation.resumeSafely(Result.failure(e))
                     }
-            } catch (e: Exception) {
-                continuation.resumeSafely(Result.failure(e))
+            } catch (t: Throwable) {
+                android.util.Log.e("RAILX_CRASH_DEBUG", "Error di [InputImage atau Recognizer Process]: ${t.message}", t)
+                continuation.resumeSafely(Result.failure(Exception(t)))
             }
         }
     }

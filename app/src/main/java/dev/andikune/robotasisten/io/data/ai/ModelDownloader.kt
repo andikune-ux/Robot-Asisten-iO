@@ -2,6 +2,8 @@ package dev.andikune.robotasisten.io.data.ai
 
 import android.content.Context
 import android.os.StatFs
+import android.util.Log
+import dev.andikune.robotasisten.io.util.CrashHandler
 import dev.andikune.robotasisten.io.util.FileHelper
 import dev.andikune.robotasisten.io.util.LogHelper
 import kotlinx.coroutines.CancellationException
@@ -278,13 +280,18 @@ class ModelDownloader(private val context: Context) {
                     markerTemp.delete()
                     // Preserve the partial model. The next attempt resumes it through HTTP Range.
                     throw cancelled
-                } catch (error: Exception) {
-                    LogHelper.w(TAG, "Download/verifikasi ${model.id} gagal: ${error.message}")
+                } catch (t: Throwable) {
+                    Log.e(CrashHandler.TAG_DEBUG, "Error di [Download Model ${model.name}]: ${t.message}", t)
+                    CrashHandler.recordCrash(context, "Download Model ${model.name}", t)
                     markerTemp.delete()
                     if (partial.length() >= model.sizeBytes) partial.delete()
                     false
                 } finally {
-                    connection?.disconnect()
+                    try {
+                        connection?.disconnect()
+                    } catch (e: Throwable) {
+                        Log.e(CrashHandler.TAG_DEBUG, "Error di [Disconnect Connection]: ${e.message}", e)
+                    }
                     _downloadProgress.value = _downloadProgress.value - model.id
                     _downloadProgressInfo.value = _downloadProgressInfo.value - model.id
                 }
@@ -293,31 +300,45 @@ class ModelDownloader(private val context: Context) {
         onComplete(succeeded)
     }
 
-    private fun openConnection(model: OfflineModelSpec, offset: Long): HttpURLConnection =
-        (URL(model.downloadUrl).openConnection() as HttpURLConnection).apply {
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = true
-            requestMethod = "GET"
-            setRequestProperty("Accept", "application/octet-stream")
-            setRequestProperty("Accept-Encoding", "identity")
-            setRequestProperty("User-Agent", "RELX-iO-Android")
-            if (offset > 0L) setRequestProperty("Range", "bytes=$offset-")
-        }
-
-    private suspend fun updateDigestFromFile(file: File, digest: MessageDigest, coroutineContext: kotlin.coroutines.CoroutineContext) {
-        file.inputStream().buffered().use { input ->
-            val buffer = ByteArray(BUFFER_SIZE)
-            while (true) {
-                coroutineContext.ensureActive()
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
+    private fun openConnection(model: OfflineModelSpec, offset: Long): HttpURLConnection {
+        return try {
+            (URL(model.downloadUrl).openConnection() as HttpURLConnection).apply {
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                instanceFollowRedirects = true
+                requestMethod = "GET"
+                setRequestProperty("Accept", "application/octet-stream")
+                setRequestProperty("Accept-Encoding", "identity")
+                setRequestProperty("User-Agent", "RELX-iO-Android")
+                if (offset > 0L) setRequestProperty("Range", "bytes=$offset-")
             }
+        } catch (t: Throwable) {
+            Log.e(CrashHandler.TAG_DEBUG, "Error di [Koneksi Download Model ${model.name}]: ${t.message}", t)
+            CrashHandler.recordCrash(context, "Koneksi Download Model ${model.name}", t)
+            throw t
         }
     }
 
-    private fun verifySha256(file: File, expected: String): Boolean = runCatching {
+    private suspend fun updateDigestFromFile(file: File, digest: MessageDigest, coroutineContext: kotlin.coroutines.CoroutineContext) {
+        try {
+            file.inputStream().buffered().use { input ->
+                val buffer = ByteArray(BUFFER_SIZE)
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+            }
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            Log.e(CrashHandler.TAG_DEBUG, "Error di [Digest Pembacaan File Model]: ${t.message}", t)
+            CrashHandler.recordCrash(context, "Digest Pembacaan File Model", t)
+            throw t
+        }
+    }
+
+    private fun verifySha256(file: File, expected: String): Boolean = try {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().buffered().use { input ->
             val buffer = ByteArray(BUFFER_SIZE)
@@ -328,13 +349,21 @@ class ModelDownloader(private val context: Context) {
             }
         }
         digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) } == expected
-    }.getOrDefault(false)
+    } catch (t: Throwable) {
+        Log.e(CrashHandler.TAG_DEBUG, "Error di [Verifikasi SHA-256 File Model]: ${t.message}", t)
+        CrashHandler.recordCrash(context, "Verifikasi SHA-256 File Model", t)
+        false
+    }
 
     private fun moveReplacing(source: File, target: File) {
         try {
             Files.move(source.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } catch (_: AtomicMoveNotSupportedException) {
             Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        } catch (t: Throwable) {
+            Log.e(CrashHandler.TAG_DEBUG, "Error di [Penyimpanan Akhir Model ke Disk]: ${t.message}", t)
+            CrashHandler.recordCrash(context, "Penyimpanan Akhir Model ke Disk", t)
+            throw t
         }
     }
 

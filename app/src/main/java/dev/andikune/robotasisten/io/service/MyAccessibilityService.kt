@@ -11,6 +11,8 @@ import android.os.Looper
 import android.view.Display
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import android.util.Log
+import dev.andikune.robotasisten.io.util.CrashHandler
 import dev.andikune.robotasisten.io.util.LogHelper
 import dev.andikune.robotasisten.io.util.OcrHelper
 import kotlinx.coroutines.CoroutineScope
@@ -24,10 +26,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 class MyAccessibilityService : AccessibilityService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val serviceScope by lazy {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + CrashHandler.createCoroutineExceptionHandler("MyAccessibilityService", this))
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        CrashHandler.init(this)
         connectedService = this
         LogHelper.i(TAG, "Accessibility screen actions connected")
     }
@@ -73,6 +78,7 @@ class MyAccessibilityService : AccessibilityService() {
                         buffer.closeSafely()
 
                         if (bitmap == null) {
+                            Log.w(CrashHandler.TAG_DEBUG, "Frame layar kosong dari HardwareBuffer")
                             callback(accessibilityTextOrFailure(IllegalStateException("Gagal membaca frame layar")))
                         } else {
                             serviceScope.launch {
@@ -80,10 +86,16 @@ class MyAccessibilityService : AccessibilityService() {
                                     OcrHelper.recognizeText(bitmap)
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
-                                } catch (error: Exception) {
-                                    Result.failure(error)
+                                } catch (t: Throwable) {
+                                    Log.e(CrashHandler.TAG_DEBUG, "Error di [OCR Pemindaian Layar]: ${t.message}", t)
+                                    CrashHandler.recordCrash(this@MyAccessibilityService, "OCR Pemindaian Layar", t)
+                                    Result.failure(Exception(t))
                                 } finally {
-                                    bitmap.recycle()
+                                    try {
+                                        bitmap.recycle()
+                                    } catch (e: Throwable) {
+                                        Log.e(CrashHandler.TAG_DEBUG, "Error di [Recycle Bitmap]: ${e.message}", e)
+                                    }
                                 }
 
                                 if (recognized.isFailure || recognized.getOrNull().isNullOrBlank()) {
@@ -93,23 +105,28 @@ class MyAccessibilityService : AccessibilityService() {
                                 }
                             }
                         }
-                    } catch (error: Exception) {
+                    } catch (t: Throwable) {
+                        Log.e(CrashHandler.TAG_DEBUG, "Error di [Pemrosesan Bitmap Layar HardwareBuffer]: ${t.message}", t)
+                        CrashHandler.recordCrash(this@MyAccessibilityService, "Pemrosesan Bitmap Layar HardwareBuffer", t)
                         result.hardwareBuffer.closeSafely()
-                        callback(Result.failure(error))
+                        callback(accessibilityTextOrFailure(Exception(t)))
                     }
                 }
 
                 override fun onFailure(errorCode: Int) {
+                    Log.e(CrashHandler.TAG_DEBUG, "Error di [Tangkapan Layar Accessibility onFailure]: kode $errorCode", null)
                     if (completed.compareAndSet(false, true)) {
                         mainHandler.removeCallbacks(timeout)
                         callback(accessibilityTextOrFailure(IllegalStateException("Tangkapan layar gagal (kode $errorCode)")))
                     }
                 }
             })
-        } catch (error: Exception) {
+        } catch (t: Throwable) {
+            Log.e(CrashHandler.TAG_DEBUG, "Error di [Inisiasi Tangkapan Layar takeScreenshot]: ${t.message}", t)
+            CrashHandler.recordCrash(this@MyAccessibilityService, "Inisiasi Tangkapan Layar takeScreenshot", t)
             if (completed.compareAndSet(false, true)) {
                 mainHandler.removeCallbacks(timeout)
-                callback(accessibilityTextOrFailure(error))
+                callback(accessibilityTextOrFailure(Exception(t)))
             }
         }
     }
