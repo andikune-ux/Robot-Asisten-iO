@@ -30,9 +30,11 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import dev.andikune.robotasisten.io.MainActivity
 import dev.andikune.robotasisten.io.R
+import dev.andikune.robotasisten.io.data.ai.PromptBuilder
 import dev.andikune.robotasisten.io.di.AppModule
 import dev.andikune.robotasisten.io.logic.AutoFillEngine
 import dev.andikune.robotasisten.io.logic.DetectedQuestion
+import dev.andikune.robotasisten.io.logic.InteractiveActionResult
 import dev.andikune.robotasisten.io.logic.QuestionDetector
 import dev.andikune.robotasisten.io.logic.ResolutionResult
 import dev.andikune.robotasisten.io.ui.overlay.AnalysisPreviewCard
@@ -392,134 +394,466 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
         automationJob = serviceScope.launch {
             try {
-                // STEP 1: Scanning screen
-                currentRuntimeStep.value = RuntimeStep.SCANNING
-                bubbleStatus.value = BubbleStatus.SCANNING
-                minimizedStatusText.value = "Sedang memindai tampilan layar..."
-                HapticHelper.vibrateClick(this@OverlayService)
-                delay(700)
-
-                // Capture screen via accessibility or fallback
-                val rawText = suspendCoroutine<String> { continuation ->
-                    val requested = MyAccessibilityService.requestScreenText { result ->
-                        val text = result.getOrNull()
-                        if (!text.isNullOrBlank()) {
-                            continuation.resume(text)
-                        } else {
-                            val clip = ClipboardHelper.getClipboardText(this@OverlayService)
-                            continuation.resume(clip?.takeIf(String::isNotBlank) ?: "Apa ibu kota negara Indonesia?\nA. Jakarta\nB. Nusantara\nC. Surabaya\nD. Bandung")
-                        }
-                    }
-                    if (!requested) {
-                        val clip = ClipboardHelper.getClipboardText(this@OverlayService)
-                        continuation.resume(clip?.takeIf(String::isNotBlank) ?: "Apa ibu kota negara Indonesia?\nA. Jakarta\nB. Nusantara\nC. Surabaya\nD. Bandung")
-                    }
+                when (tool) {
+                    AutomationTool.PREPARE_ANSWER -> runPrepareAnswerWorkflow()
+                    AutomationTool.ANALYZE_SCREEN -> runAnalyzeScreenWorkflow()
+                    AutomationTool.RAILX_POWER -> runRailxPowerWorkflow()
+                    AutomationTool.OCR_READ -> runOcrReadWorkflow()
                 }
-
-                while (isPaused.value) { delay(400) }
-
-                // STEP 2: Detecting questions
-                val questions = QuestionDetector.detectAll(rawText)
-                val totalCount = questions.size.coerceAtLeast(1)
-                totalDetectedQuestions.intValue = totalCount
-                currentRuntimeStep.value = RuntimeStep.QUESTIONS_DETECTED
-                minimizedStatusText.value = "Menemukan pertanyaan [Terdeteksi $totalCount Pertanyaan]"
-                delay(1000)
-
-                val settings = AppModule.provideSettingsRepository(this@OverlayService)
-                val fallbackChain = AppModule.provideFallbackChain(this@OverlayService)
-                val historyRepo = AppModule.provideHistoryRepository(this@OverlayService)
-                val mode = settings.activeMode.value
-
-                // STEP 3 to 7: Looping through all questions dynamically
-                for (index in 0 until totalCount) {
-                    while (isPaused.value) { delay(400) }
-
-                    val question = if (index < questions.size) questions[index] else QuestionDetector.detect(rawText)
-                    currentQuestionIdx.intValue = index + 1
-                    currentQuestionText.value = question.questionText
-
-                    // STEP 3: OCR extracting
-                    currentRuntimeStep.value = RuntimeStep.OCR_EXTRACTING
-                    bubbleStatus.value = BubbleStatus.ANALYZING
-                    minimizedStatusText.value = "Membaca & mengekstrak OCR (Soal ${index + 1}/$totalCount)"
-                    delay(800)
-
-                    while (isPaused.value) { delay(400) }
-
-                    // STEP 4: Analyzing answer
-                    currentRuntimeStep.value = RuntimeStep.ANALYZING_ANSWER
-                    bubbleStatus.value = BubbleStatus.ANALYZING
-                    minimizedStatusText.value = "Menganalisis pertanyaan [Ke-${index + 1}]..."
-
-                    val effectiveQuery = if (userCommandPrompt.value.isNotBlank()) {
-                        "${question.questionText}\n[Instruksi: ${userCommandPrompt.value}]"
-                    } else {
-                        question.questionText
-                    }
-
-                    val resolution = fallbackChain.resolve(effectiveQuery, mode, question.type)
-                    currentAnswerText.value = resolution.answer
-
-                    historyRepo.recordAnswer(
-                        question = question.questionText,
-                        answer = resolution.answer,
-                        mode = mode,
-                        questionType = question.type.name,
-                        isCacheHit = resolution.isCacheHit
-                    )
-
-                    delay(900)
-                    while (isPaused.value) { delay(400) }
-
-                    // STEP 5: Filling / choosing answer
-                    currentRuntimeStep.value = RuntimeStep.FILLING_ANSWER
-                    bubbleStatus.value = BubbleStatus.ANSWERING
-                    minimizedStatusText.value = "Mengisi jawaban otomatis pada pertanyaan [Ke-${index + 1}]"
-
-                    if (tool == AutomationTool.PREPARE_ANSWER || tool == AutomationTool.RAILX_POWER) {
-                        AutoFillEngine.fillAnswer(this@OverlayService, resolution.answer) {}
-                    } else {
-                        // For OCR read or screen analysis, copy to clipboard for convenience
-                        ClipboardHelper.copyToClipboard(this@OverlayService, "RAILX Hasil", resolution.answer)
-                    }
-
-                    delay(1000)
-
-                    // STEP 6: Answer success
-                    currentRuntimeStep.value = RuntimeStep.ANSWER_SUCCESS
-                    bubbleStatus.value = BubbleStatus.READY
-                    minimizedStatusText.value = "Jawaban berhasil diberikan [Ke-${index + 1}]!"
-                    SoundHelper.playSuccess()
-                    HapticHelper.vibrateSuccess(this@OverlayService)
-                    delay(1200)
-
-                    // STEP 7: Auto scroll / next question
-                    if (index < totalCount - 1 || autoScrollEnabled.value) {
-                        currentRuntimeStep.value = RuntimeStep.AUTO_SCROLLING
-                        minimizedStatusText.value = "Menggulir layar / lanjut ke berikutnya..."
-                        MyAccessibilityService.scrollActiveWindowOnce(forward = true) {}
-                        delay(1200)
-                    }
-                }
-
-                // Completion
-                currentRuntimeStep.value = RuntimeStep.COMPLETED
-                bubbleStatus.value = BubbleStatus.READY
-                minimizedStatusText.value = "Seluruh tugas telah selesai diproses."
-                SoundHelper.playSuccess()
-                HapticHelper.vibrateSuccess(this@OverlayService)
-
             } catch (e: CancellationException) {
                 LogHelper.i("OverlayService", "Automation job cancelled")
                 throw e
             } catch (e: Exception) {
                 LogHelper.e("OverlayService", "Automation error: ${e.message}", e)
                 bubbleStatus.value = BubbleStatus.ERROR
-                minimizedStatusText.value = "Terjadi kesalahan automasi"
+                minimizedStatusText.value = "Terjadi kendala automasi: ${e.message?.take(30)}"
                 ToastHelper.showShort(this@OverlayService, "Automasi terhenti: ${e.message}")
             }
         }
+    }
+
+    private suspend fun captureScreenTextOnce(): String = suspendCoroutine { continuation ->
+        val requested = MyAccessibilityService.requestScreenText { result ->
+            val text = result.getOrNull()
+            if (!text.isNullOrBlank()) {
+                continuation.resume(text)
+            } else {
+                val clip = ClipboardHelper.getClipboardText(this@OverlayService)
+                continuation.resume(clip?.takeIf(String::isNotBlank) ?: "")
+            }
+        }
+        if (!requested) {
+            val clip = ClipboardHelper.getClipboardText(this@OverlayService)
+            continuation.resume(clip?.takeIf(String::isNotBlank) ?: "")
+        }
+    }
+
+    private suspend fun captureScreenTextWithRetry(maxRetries: Int = 2): String {
+        for (attempt in 0..maxRetries) {
+            val text = captureScreenTextOnce()
+            if (text.isNotBlank() && (QuestionDetector.isLikelyQuestion(text) || text.length > 25)) {
+                return text
+            }
+            if (attempt < maxRetries) {
+                delay(600)
+            }
+        }
+        val fallback = captureScreenTextOnce()
+        return fallback.ifBlank {
+            "Apa ibu kota negara Indonesia?\nA. Jakarta\nB. Nusantara\nC. Surabaya\nD. Bandung"
+        }
+    }
+
+    /**
+     * Tool 1: Siapkan Jawaban
+     * Murni informatif (view-only di overlay), dilarang klik/aksi otomatis ke layar target.
+     */
+    private suspend fun runPrepareAnswerWorkflow() {
+        // STEP 1: Scanning
+        currentRuntimeStep.value = RuntimeStep.SCANNING
+        bubbleStatus.value = BubbleStatus.SCANNING
+        minimizedStatusText.value = "Sedang memindai tampilan layar..."
+        HapticHelper.vibrateClick(this@OverlayService)
+        delay(700)
+
+        val rawText = captureScreenTextWithRetry()
+        while (isPaused.value) { delay(400) }
+
+        // STEP 2: Questions detected
+        val questions = QuestionDetector.detectAll(rawText)
+        val totalCount = questions.size.coerceAtLeast(1)
+        totalDetectedQuestions.intValue = totalCount
+        currentRuntimeStep.value = RuntimeStep.QUESTIONS_DETECTED
+        minimizedStatusText.value = "Menemukan pertanyaan [Terdeteksi $totalCount Pertanyaan]"
+        delay(800)
+
+        val settings = AppModule.provideSettingsRepository(this@OverlayService)
+        val fallbackChain = AppModule.provideFallbackChain(this@OverlayService)
+        val historyRepo = AppModule.provideHistoryRepository(this@OverlayService)
+        val mode = settings.activeMode.value
+
+        for (index in 0 until totalCount) {
+            while (isPaused.value) { delay(400) }
+            val question = if (index < questions.size) questions[index] else QuestionDetector.detect(rawText)
+            currentQuestionIdx.intValue = index + 1
+            currentQuestionText.value = question.questionText
+
+            // STEP 3: OCR
+            currentRuntimeStep.value = RuntimeStep.OCR_EXTRACTING
+            bubbleStatus.value = BubbleStatus.ANALYZING
+            minimizedStatusText.value = "Membaca teks soal (Soal ${index + 1}/$totalCount)"
+            delay(600)
+
+            while (isPaused.value) { delay(400) }
+
+            // STEP 4: Analyzing direct answer
+            currentRuntimeStep.value = RuntimeStep.ANALYZING_ANSWER
+            bubbleStatus.value = BubbleStatus.ANALYZING
+            minimizedStatusText.value = "Menyiapkan jawaban terbaik [Ke-${index + 1}]..."
+
+            val directPrompt = PromptBuilder.buildDirectAnswerPrompt(
+                question = question.questionText,
+                type = question.type,
+                options = question.options
+            )
+            val effectivePrompt = if (userCommandPrompt.value.isNotBlank()) {
+                "$directPrompt\n[Catatan Pengguna: ${userCommandPrompt.value}]"
+            } else {
+                directPrompt
+            }
+
+            val resolution = fallbackChain.resolve(effectivePrompt, mode, question.type)
+            currentAnswerText.value = resolution.answer
+
+            historyRepo.recordAnswer(
+                question = question.questionText,
+                answer = resolution.answer,
+                mode = mode,
+                questionType = question.type.name,
+                isCacheHit = resolution.isCacheHit
+            )
+
+            delay(700)
+            while (isPaused.value) { delay(400) }
+
+            // STEP 5: View-Only Presentation (STRICT: NO AUTO-CLICK ON TARGET SCREEN)
+            currentRuntimeStep.value = RuntimeStep.FILLING_ANSWER
+            bubbleStatus.value = BubbleStatus.READY
+            minimizedStatusText.value = "Hasil jawaban siap [Ke-${index + 1}] (View-Only)"
+            delay(900)
+
+            // STEP 6: Answer Success
+            currentRuntimeStep.value = RuntimeStep.ANSWER_SUCCESS
+            bubbleStatus.value = BubbleStatus.READY
+            minimizedStatusText.value = "Jawaban siap dibaca di overlay [Ke-${index + 1}]"
+            SoundHelper.playSuccess()
+            HapticHelper.vibrateSuccess(this@OverlayService)
+            delay(1200)
+
+            // Auto-scroll next if enabled
+            if (index < totalCount - 1 && autoScrollEnabled.value) {
+                currentRuntimeStep.value = RuntimeStep.AUTO_SCROLLING
+                minimizedStatusText.value = "Memindai soal berikutnya..."
+                MyAccessibilityService.scrollActiveWindowOnce(forward = true) {}
+                delay(1200)
+            }
+        }
+
+        currentRuntimeStep.value = RuntimeStep.COMPLETED
+        bubbleStatus.value = BubbleStatus.READY
+        minimizedStatusText.value = "Seluruh jawaban selesai disiapkan (View-Only)."
+        SoundHelper.playSuccess()
+        HapticHelper.vibrateSuccess(this@OverlayService)
+    }
+
+    /**
+     * Tool 2: Analisis Layar
+     * Menyajikan analisis mendalam & rationale/penjelasan lengkap mengapa jawaban benar.
+     */
+    private suspend fun runAnalyzeScreenWorkflow() {
+        // STEP 1: Scanning
+        currentRuntimeStep.value = RuntimeStep.SCANNING
+        bubbleStatus.value = BubbleStatus.SCANNING
+        minimizedStatusText.value = "Sedang memindai tampilan layar..."
+        HapticHelper.vibrateClick(this@OverlayService)
+        delay(700)
+
+        val rawText = captureScreenTextWithRetry()
+        while (isPaused.value) { delay(400) }
+
+        // STEP 2: Questions detected
+        val questions = QuestionDetector.detectAll(rawText)
+        val totalCount = questions.size.coerceAtLeast(1)
+        totalDetectedQuestions.intValue = totalCount
+        currentRuntimeStep.value = RuntimeStep.QUESTIONS_DETECTED
+        minimizedStatusText.value = "Menemukan konten soal [Terdeteksi $totalCount Soal]"
+        delay(800)
+
+        val settings = AppModule.provideSettingsRepository(this@OverlayService)
+        val fallbackChain = AppModule.provideFallbackChain(this@OverlayService)
+        val historyRepo = AppModule.provideHistoryRepository(this@OverlayService)
+        val mode = settings.activeMode.value
+
+        for (index in 0 until totalCount) {
+            while (isPaused.value) { delay(400) }
+            val question = if (index < questions.size) questions[index] else QuestionDetector.detect(rawText)
+            currentQuestionIdx.intValue = index + 1
+            currentQuestionText.value = question.questionText
+
+            // STEP 3: OCR
+            currentRuntimeStep.value = RuntimeStep.OCR_EXTRACTING
+            bubbleStatus.value = BubbleStatus.ANALYZING
+            minimizedStatusText.value = "Membaca struktur konten (Soal ${index + 1}/$totalCount)"
+            delay(600)
+
+            while (isPaused.value) { delay(400) }
+
+            // STEP 4: Analyzing in-depth rationale
+            currentRuntimeStep.value = RuntimeStep.ANALYZING_ANSWER
+            bubbleStatus.value = BubbleStatus.ANALYZING
+            minimizedStatusText.value = "Menyusun analisis mendalam [Ke-${index + 1}]..."
+
+            val deepPrompt = PromptBuilder.buildDeepAnalysisPrompt(
+                question = question.questionText,
+                type = question.type,
+                options = question.options
+            )
+            val effectivePrompt = if (userCommandPrompt.value.isNotBlank()) {
+                "$deepPrompt\n[Fokus Analisis: ${userCommandPrompt.value}]"
+            } else {
+                deepPrompt
+            }
+
+            val resolution = fallbackChain.resolve(effectivePrompt, mode, question.type)
+            currentAnswerText.value = resolution.answer
+
+            historyRepo.recordAnswer(
+                question = question.questionText,
+                answer = resolution.answer,
+                mode = mode,
+                questionType = question.type.name,
+                isCacheHit = resolution.isCacheHit
+            )
+
+            delay(800)
+            while (isPaused.value) { delay(400) }
+
+            // STEP 5 & 6: Display in-depth analysis
+            currentRuntimeStep.value = RuntimeStep.FILLING_ANSWER
+            bubbleStatus.value = BubbleStatus.READY
+            minimizedStatusText.value = "Analisis mendalam siap ditampilkan [Ke-${index + 1}]"
+            delay(900)
+
+            currentRuntimeStep.value = RuntimeStep.ANSWER_SUCCESS
+            bubbleStatus.value = BubbleStatus.READY
+            minimizedStatusText.value = "Analisis selesai untuk soal [Ke-${index + 1}]"
+            SoundHelper.playSuccess()
+            HapticHelper.vibrateSuccess(this@OverlayService)
+            delay(1200)
+
+            if (index < totalCount - 1 && autoScrollEnabled.value) {
+                currentRuntimeStep.value = RuntimeStep.AUTO_SCROLLING
+                minimizedStatusText.value = "Beralih ke analisis soal berikutnya..."
+                MyAccessibilityService.scrollActiveWindowOnce(forward = true) {}
+                delay(1200)
+            }
+        }
+
+        currentRuntimeStep.value = RuntimeStep.COMPLETED
+        bubbleStatus.value = BubbleStatus.READY
+        minimizedStatusText.value = "Seluruh analisis soal selesai diproses."
+        SoundHelper.playSuccess()
+        HapticHelper.vibrateSuccess(this@OverlayService)
+    }
+
+    /**
+     * Tool 3: RAILX Power (Automasi Penuh / Real Runtime)
+     * Langsung mengeksekusi klik opsi atau isi jawaban pada layar target, menekan Next, dan auto-scroll.
+     */
+    private suspend fun runRailxPowerWorkflow() {
+        // STEP 1: Scanning
+        currentRuntimeStep.value = RuntimeStep.SCANNING
+        bubbleStatus.value = BubbleStatus.SCANNING
+        minimizedStatusText.value = "Sedang memindai tampilan layar..."
+        HapticHelper.vibrateClick(this@OverlayService)
+        delay(700)
+
+        val rawText = captureScreenTextWithRetry()
+        while (isPaused.value) { delay(400) }
+
+        // STEP 2: Detecting questions
+        val questions = QuestionDetector.detectAll(rawText)
+        val totalCount = questions.size.coerceAtLeast(1)
+        totalDetectedQuestions.intValue = totalCount
+        currentRuntimeStep.value = RuntimeStep.QUESTIONS_DETECTED
+        minimizedStatusText.value = "Menemukan pertanyaan [Terdeteksi $totalCount Pertanyaan]"
+        delay(800)
+
+        val settings = AppModule.provideSettingsRepository(this@OverlayService)
+        val fallbackChain = AppModule.provideFallbackChain(this@OverlayService)
+        val historyRepo = AppModule.provideHistoryRepository(this@OverlayService)
+        val mode = settings.activeMode.value
+
+        for (index in 0 until totalCount) {
+            while (isPaused.value) { delay(400) }
+            val question = if (index < questions.size) questions[index] else QuestionDetector.detect(rawText)
+            currentQuestionIdx.intValue = index + 1
+            currentQuestionText.value = question.questionText
+
+            // STEP 3: OCR
+            currentRuntimeStep.value = RuntimeStep.OCR_EXTRACTING
+            bubbleStatus.value = BubbleStatus.ANALYZING
+            minimizedStatusText.value = "Membaca target interaktif (Soal ${index + 1}/$totalCount)"
+            delay(600)
+
+            while (isPaused.value) { delay(400) }
+
+            // STEP 4: Analyzing action target
+            currentRuntimeStep.value = RuntimeStep.ANALYZING_ANSWER
+            bubbleStatus.value = BubbleStatus.ANALYZING
+            minimizedStatusText.value = "Menganalisis target aksi [Ke-${index + 1}]..."
+
+            val powerPrompt = PromptBuilder.buildPowerAutoFillPrompt(
+                question = question.questionText,
+                type = question.type,
+                options = question.options
+            )
+            val effectivePrompt = if (userCommandPrompt.value.isNotBlank()) {
+                "$powerPrompt\n[Instruksi: ${userCommandPrompt.value}]"
+            } else {
+                powerPrompt
+            }
+
+            val resolution = fallbackChain.resolve(effectivePrompt, mode, question.type)
+            currentAnswerText.value = resolution.answer
+
+            historyRepo.recordAnswer(
+                question = question.questionText,
+                answer = resolution.answer,
+                mode = mode,
+                questionType = question.type.name,
+                isCacheHit = resolution.isCacheHit
+            )
+
+            delay(700)
+            while (isPaused.value) { delay(400) }
+
+            // STEP 5: REAL INTERACTIVE ACTION EXECUTION ON TARGET SCREEN
+            currentRuntimeStep.value = RuntimeStep.FILLING_ANSWER
+            bubbleStatus.value = BubbleStatus.ANSWERING
+            minimizedStatusText.value = "Mengeksekusi aksi otomatis pada layar [Ke-${index + 1}]"
+
+            val actionResult = suspendCoroutine<InteractiveActionResult> { cont ->
+                AutoFillEngine.executeInteractiveAction(
+                    context = this@OverlayService,
+                    answer = resolution.answer,
+                    question = question
+                ) { result ->
+                    cont.resume(result)
+                }
+            }
+
+            when (actionResult) {
+                is InteractiveActionResult.ClickedOption -> {
+                    currentAnswerText.value = "🔘 Memilih Opsi: ${actionResult.label}"
+                }
+                is InteractiveActionResult.FilledField -> {
+                    currentAnswerText.value = "✍️ Mengisi Teks: ${actionResult.text.take(40)}..."
+                }
+                is InteractiveActionResult.ClickedNext -> {
+                    currentAnswerText.value = "➡️ Tombol Selanjutnya ditekan"
+                }
+                else -> {
+                    currentAnswerText.value = "📋 Jawaban disalin: ${resolution.answer.take(40)}"
+                }
+            }
+
+            delay(800)
+
+            // Auto-click "Selanjutnya" / "Next" button if present
+            AutoFillEngine.triggerNextButton { clicked ->
+                if (clicked) {
+                    LogHelper.i("OverlayService", "Next button automatically clicked")
+                }
+            }
+
+            delay(600)
+
+            // STEP 6: Success
+            currentRuntimeStep.value = RuntimeStep.ANSWER_SUCCESS
+            bubbleStatus.value = BubbleStatus.READY
+            minimizedStatusText.value = "Aksi otomatis berhasil [Ke-${index + 1}]!"
+            SoundHelper.playSuccess()
+            HapticHelper.vibrateSuccess(this@OverlayService)
+            delay(1000)
+
+            // STEP 7: Auto-scroll continuous execution if questions on long page
+            if (index < totalCount - 1 || autoScrollEnabled.value) {
+                currentRuntimeStep.value = RuntimeStep.AUTO_SCROLLING
+                minimizedStatusText.value = "Menggulir layar / lanjut ke soal berikutnya..."
+                MyAccessibilityService.scrollActiveWindowOnce(forward = true) {}
+                delay(1200)
+            }
+        }
+
+        currentRuntimeStep.value = RuntimeStep.COMPLETED
+        bubbleStatus.value = BubbleStatus.READY
+        minimizedStatusText.value = "Seluruh tugas automasi telah selesai diproses."
+        SoundHelper.playSuccess()
+        HapticHelper.vibrateSuccess(this@OverlayService)
+    }
+
+    /**
+     * Tool 4: Baca Teks Layar OCR
+     * Ekstraksi teks layar komprehensif, multi-halaman jika auto-scroll aktif,
+     * dan salin ke clipboard sistem tanpa batasan jumlah karakter.
+     */
+    private suspend fun runOcrReadWorkflow() {
+        // STEP 1: Scanning
+        currentRuntimeStep.value = RuntimeStep.SCANNING
+        bubbleStatus.value = BubbleStatus.SCANNING
+        minimizedStatusText.value = "Sedang memindai teks layar..."
+        HapticHelper.vibrateClick(this@OverlayService)
+        delay(700)
+
+        val collectedPages = mutableListOf<String>()
+        val maxPages = if (autoScrollEnabled.value) 4 else 1
+
+        for (page in 1..maxPages) {
+            while (isPaused.value) { delay(400) }
+            currentRuntimeStep.value = RuntimeStep.OCR_EXTRACTING
+            minimizedStatusText.value = "Mengekstrak teks visual OCR (Halaman $page/$maxPages)..."
+
+            val pageText = captureScreenTextOnce()
+            if (pageText.isNotBlank()) {
+                collectedPages.add(pageText)
+            }
+
+            if (page < maxPages) {
+                currentRuntimeStep.value = RuntimeStep.AUTO_SCROLLING
+                minimizedStatusText.value = "Menggulir ke halaman berikutnya..."
+                MyAccessibilityService.scrollActiveWindowOnce(forward = true) {}
+                delay(1300)
+            }
+        }
+
+        // STEP 2 & 3: Merge without duplicates
+        currentRuntimeStep.value = RuntimeStep.ANALYZING_ANSWER
+        val combinedText = buildString {
+            val seenLines = mutableSetOf<String>()
+            collectedPages.forEach { pageContent ->
+                pageContent.lineSequence().forEach { line ->
+                    val clean = line.trim()
+                    if (clean.isNotEmpty() && !seenLines.contains(clean)) {
+                        seenLines.add(clean)
+                        appendLine(clean)
+                    }
+                }
+            }
+        }.trim().ifBlank {
+            captureScreenTextWithRetry()
+        }
+
+        currentAnswerText.value = combinedText
+
+        // STEP 4: Copy to clipboard without character limits
+        currentRuntimeStep.value = RuntimeStep.FILLING_ANSWER
+        minimizedStatusText.value = "Menyalin seluruh teks ke clipboard..."
+        ClipboardHelper.copyToClipboard(this@OverlayService, "Teks Ekstraksi OCR Lengkap", combinedText)
+        delay(700)
+
+        // STEP 5: Success
+        currentRuntimeStep.value = RuntimeStep.ANSWER_SUCCESS
+        bubbleStatus.value = BubbleStatus.READY
+        minimizedStatusText.value = "Teks berhasil disalin (${combinedText.length} karakter)!"
+        SoundHelper.playSuccess()
+        HapticHelper.vibrateSuccess(this@OverlayService)
+        ToastHelper.showShort(this@OverlayService, "Seluruh teks layar (${combinedText.length} karakter) tersalin ke clipboard!")
+        delay(1200)
+
+        currentRuntimeStep.value = RuntimeStep.COMPLETED
+        bubbleStatus.value = BubbleStatus.READY
+        minimizedStatusText.value = "Ekstraksi teks layar selesai."
     }
 
     private fun stopAutomationRuntime() {

@@ -60,6 +60,7 @@ fun OfflineModeScreen(onNavigateBack: () -> Unit) {
     val settingsRepo = AppModule.provideSettingsRepository(context)
     val selectedModel by settingsRepo.selectedOfflineModel.collectAsState()
     val progressMap by downloader.downloadProgress.collectAsState()
+    val progressInfoMap by downloader.downloadProgressInfo.collectAsState()
     val scope = rememberCoroutineScope()
     var downloadingModelId by remember { mutableStateOf<String?>(null) }
     var failedModelIds by remember { mutableStateOf(emptySet<String>()) }
@@ -103,7 +104,8 @@ fun OfflineModeScreen(onNavigateBack: () -> Unit) {
                 items(downloader.availableModels, key = { it.id }) { model ->
                     val installed = downloader.isModelDownloaded(model)
                     val active = isSelected(model) && installed
-                    val progress = progressMap[model.id]
+                    val progressInfo = progressInfoMap[model.id]
+                    val progress = progressInfo?.progress ?: progressMap[model.id]
                     val partialBytes = downloader.partialDownloadedBytes(model)
                     val hasFiles = downloader.hasModelFiles(model)
                     Card(
@@ -126,13 +128,38 @@ fun OfflineModeScreen(onNavigateBack: () -> Unit) {
                             Text(model.capability, style = MaterialTheme.typography.bodySmall)
                             Spacer(Modifier.height(4.dp))
                             Text(model.recommendedRamText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
                             if (progress != null) {
                                 Spacer(Modifier.height(10.dp))
-                                LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                                Text("Mengunduh/memverifikasi ${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                LinearProgressIndicator(
+                                    progress = { progress.coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth().height(8.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val percent = progressInfo?.percent ?: (progress * 100).toInt()
+                                    val downloadedText = progressInfo?.let { dev.andikune.robotasisten.io.data.ai.ModelDownloader.formatBytes(it.bytesDownloaded) }
+                                    Text(
+                                        text = if (downloadedText != null) "Mengunduh: $percent% ($downloadedText / ${model.sizeText})" else "Mengunduh: $percent%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    if (progressInfo?.isVerifying == true) {
+                                        Text("Memverifikasi SHA-256...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                    } else if (!progressInfo?.speedText.isNullOrBlank()) {
+                                        Text("⚡ ${progressInfo?.speedText}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary)
+                                    }
+                                }
                             } else if (!installed && partialBytes > 0L) {
                                 Spacer(Modifier.height(6.dp))
-                                Text("Data tersimpan: ${formatMiB(partialBytes)} dari ${model.sizeText}; coba lagi akan melanjutkan unduhan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                Text("Data tersimpan: ${dev.andikune.robotasisten.io.data.ai.ModelDownloader.formatBytes(partialBytes)} dari ${model.sizeText}; coba lagi akan melanjutkan unduhan.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                             }
                             if (model.id in failedModelIds) {
                                 Spacer(Modifier.height(6.dp))

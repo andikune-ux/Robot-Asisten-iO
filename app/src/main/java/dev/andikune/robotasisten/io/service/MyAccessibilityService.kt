@@ -153,17 +153,165 @@ class MyAccessibilityService : AccessibilityService() {
 
     private fun fillFocusedText(text: String): Boolean {
         val root = targetApplicationRoot() ?: return false
-        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        if (!focused.isEditable) return false
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused != null && focused.isEditable) {
+            val arguments = Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            }
+            return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        }
+        val firstEditable = findFirstEditable(root, depth = 0) ?: return false
         val arguments = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
-        return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        return firstEditable.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+    }
+
+    private fun findFirstEditable(node: AccessibilityNodeInfo, depth: Int): AccessibilityNodeInfo? {
+        if (depth > MAX_NODE_DEPTH) return null
+        if (node.isEditable) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findFirstEditable(child, depth + 1)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun clickOption(optionLetter: String, optionText: String, optionIndex: Int?): Boolean {
+        val root = targetApplicationRoot() ?: return false
+        val cleanLetter = optionLetter.trim().uppercase()
+        val cleanText = optionText.trim()
+
+        // 1. Search for clickable node with matching option text or letter prefix
+        val found = findMatchingOptionNode(root, cleanLetter, cleanText, depth = 0)
+        if (found != null) {
+            val clicked = performClickOnNodeOrParent(found)
+            if (clicked) return true
+        }
+
+        // 2. Fallback: match by index among radio buttons / check boxes
+        if (optionIndex != null && optionIndex >= 0) {
+            val selectionNodes = mutableListOf<AccessibilityNodeInfo>()
+            collectSelectionNodes(root, selectionNodes, depth = 0)
+            if (optionIndex < selectionNodes.size) {
+                return performClickOnNodeOrParent(selectionNodes[optionIndex])
+            }
+        }
+        return false
+    }
+
+    private fun findMatchingOptionNode(
+        node: AccessibilityNodeInfo,
+        letter: String,
+        text: String,
+        depth: Int
+    ): AccessibilityNodeInfo? {
+        if (depth > MAX_NODE_DEPTH) return null
+        val label = (node.text ?: node.contentDescription)?.toString()?.trim().orEmpty()
+
+        if (label.isNotEmpty()) {
+            val matchesLetter = letter.isNotEmpty() && (
+                label.startsWith("$letter.", ignoreCase = true) ||
+                label.startsWith("$letter)", ignoreCase = true) ||
+                label.equals(letter, ignoreCase = true)
+            )
+            val matchesText = text.length > 3 && label.contains(text, ignoreCase = true)
+
+            if (matchesLetter || matchesText) {
+                return node
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val candidate = findMatchingOptionNode(child, letter, text, depth + 1)
+            if (candidate != null) return candidate
+        }
+        return null
+    }
+
+    private fun collectSelectionNodes(node: AccessibilityNodeInfo, list: MutableList<AccessibilityNodeInfo>, depth: Int) {
+        if (depth > MAX_NODE_DEPTH) return
+        val cls = node.className?.toString().orEmpty()
+        if (cls.contains("RadioButton", ignoreCase = true) || cls.contains("CheckBox", ignoreCase = true)) {
+            list.add(node)
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectSelectionNodes(child, list, depth + 1)
+        }
+    }
+
+    private fun clickNextButton(): Boolean {
+        val root = targetApplicationRoot() ?: return false
+        val keywords = listOf(
+            "selanjutnya", "berikutnya", "lanjut", "next", "continue",
+            "kirim", "submit", "selesai", "finish", "jawab", "simpan & lanjut"
+        )
+        return findAndClickButton(root, keywords, depth = 0)
+    }
+
+    private fun findAndClickButton(node: AccessibilityNodeInfo, keywords: List<String>, depth: Int): Boolean {
+        if (depth > MAX_NODE_DEPTH) return false
+        val label = (node.text ?: node.contentDescription)?.toString()?.trim().orEmpty().lowercase()
+        val isButtonClass = node.className?.toString()?.contains("Button", ignoreCase = true) == true
+
+        if (label.isNotEmpty() && keywords.any { label.contains(it) }) {
+            if (performClickOnNodeOrParent(node)) return true
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (findAndClickButton(child, keywords, depth + 1)) return true
+        }
+        return false
+    }
+
+    private fun performClickOnNodeOrParent(node: AccessibilityNodeInfo): Boolean {
+        var current: AccessibilityNodeInfo? = node
+        var steps = 0
+        while (current != null && steps < 5) {
+            if (current.isClickable) {
+                return current.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            }
+            current = current.parent
+            steps++
+        }
+        // If not clickable directly, try action click anyway
+        return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
     private fun scrollActiveWindowOnce(forward: Boolean): Boolean {
         val root = targetApplicationRoot() ?: return false
-        return runCatching { findScrollableAndScroll(root, forward, depth = 0) }.getOrDefault(false)
+        val standardScrolled = runCatching { findScrollableAndScroll(root, forward, depth = 0) }.getOrDefault(false)
+        if (standardScrolled) return true
+
+        // Fallback: Dispatch Gesture Swipe
+        return performGestureScroll(forward)
+    }
+
+    private fun performGestureScroll(forward: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val displayMetrics = resources.displayMetrics
+        val width = displayMetrics.widthPixels.toFloat().coerceAtLeast(720f)
+        val height = displayMetrics.heightPixels.toFloat().coerceAtLeast(1280f)
+
+        val path = android.graphics.Path()
+        val centerX = width / 2f
+        if (forward) {
+            // Swipe UP to scroll DOWN
+            path.moveTo(centerX, height * 0.75f)
+            path.lineTo(centerX, height * 0.25f)
+        } else {
+            // Swipe DOWN to scroll UP
+            path.moveTo(centerX, height * 0.25f)
+            path.lineTo(centerX, height * 0.75f)
+        }
+
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 350)
+        val gesture = android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build()
+        return dispatchGesture(gesture, null, null)
     }
 
     private fun targetApplicationRoot(): AccessibilityNodeInfo? {
@@ -211,10 +359,28 @@ class MyAccessibilityService : AccessibilityService() {
             return true
         }
 
+        fun isConnected(): Boolean = connectedService != null
+
         fun fillFocusedField(text: String, callback: (Boolean) -> Unit): Boolean {
             val service = connectedService ?: return false
             service.mainHandler.post {
                 callback(runCatching { service.fillFocusedText(text) }.getOrDefault(false))
+            }
+            return true
+        }
+
+        fun clickOptionNode(optionLetter: String, optionText: String, optionIndex: Int?, callback: (Boolean) -> Unit): Boolean {
+            val service = connectedService ?: return false
+            service.mainHandler.post {
+                callback(runCatching { service.clickOption(optionLetter, optionText, optionIndex) }.getOrDefault(false))
+            }
+            return true
+        }
+
+        fun clickNextButton(callback: (Boolean) -> Unit): Boolean {
+            val service = connectedService ?: return false
+            service.mainHandler.post {
+                callback(runCatching { service.clickNextButton() }.getOrDefault(false))
             }
             return true
         }

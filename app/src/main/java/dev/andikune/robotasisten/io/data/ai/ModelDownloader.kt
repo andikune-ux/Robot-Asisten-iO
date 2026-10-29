@@ -36,6 +36,15 @@ data class OfflineModelSpec(
     val promptStyle: String = "QWEN_CHATML"
 )
 
+data class DownloadProgressInfo(
+    val progress: Float = 0f,
+    val percent: Int = 0,
+    val bytesDownloaded: Long = 0L,
+    val totalBytes: Long = 0L,
+    val speedText: String = "",
+    val isVerifying: Boolean = false
+)
+
 class ModelDownloader(private val context: Context) {
     val availableModels: List<OfflineModelSpec> = listOf(
         OfflineModelSpec(
@@ -76,6 +85,10 @@ class ModelDownloader(private val context: Context) {
 
     private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
     val downloadProgress: StateFlow<Map<String, Float>> = _downloadProgress.asStateFlow()
+
+    private val _downloadProgressInfo = MutableStateFlow<Map<String, DownloadProgressInfo>>(emptyMap())
+    val downloadProgressInfo: StateFlow<Map<String, DownloadProgressInfo>> = _downloadProgressInfo.asStateFlow()
+
     private val downloadMutex = Mutex()
 
     private fun modelFile(model: OfflineModelSpec) = File(FileHelper.getModelsDir(context), model.filename)
@@ -182,7 +195,23 @@ class ModelDownloader(private val context: Context) {
                     val digest = MessageDigest.getInstance("SHA-256")
                     var received = if (append) offset else 0L
                     if (append) updateDigestFromFile(partial, digest, coroutineContext)
-                    _downloadProgress.value = _downloadProgress.value + (model.id to (received.toFloat() / model.sizeBytes).coerceIn(0f, 0.999f))
+
+                    var lastSpeedTime = System.currentTimeMillis()
+                    var bytesSinceSpeed = 0L
+                    var speedString = ""
+
+                    val initialPercent = ((received.toDouble() / model.sizeBytes) * 100).toInt().coerceIn(0, 99)
+                    val initialProgress = (received.toFloat() / model.sizeBytes).coerceIn(0f, 0.999f)
+                    _downloadProgress.value = _downloadProgress.value + (model.id to initialProgress)
+                    _downloadProgressInfo.value = _downloadProgressInfo.value + (model.id to DownloadProgressInfo(
+                        progress = initialProgress,
+                        percent = initialPercent,
+                        bytesDownloaded = received,
+                        totalBytes = model.sizeBytes,
+                        speedText = speedString,
+                        isVerifying = false
+                    ))
+
                     connection.inputStream.buffered().use { input ->
                         FileOutputStream(partial, append).buffered().use { output ->
                             val buffer = ByteArray(BUFFER_SIZE)
@@ -191,14 +220,46 @@ class ModelDownloader(private val context: Context) {
                                 val count = input.read(buffer)
                                 if (count < 0) break
                                 received += count
+                                bytesSinceSpeed += count
                                 if (received > model.sizeBytes) throw IllegalStateException("Unduhan melebihi ukuran model")
                                 output.write(buffer, 0, count)
                                 digest.update(buffer, 0, count)
-                                _downloadProgress.value = _downloadProgress.value +
-                                    (model.id to (received.toFloat() / model.sizeBytes).coerceIn(0f, 0.999f))
+
+                                val now = System.currentTimeMillis()
+                                val elapsed = now - lastSpeedTime
+                                if (elapsed >= 350) {
+                                    val bps = (bytesSinceSpeed * 1000L) / elapsed.coerceAtLeast(1L)
+                                    speedString = formatSpeed(bps)
+                                    lastSpeedTime = now
+                                    bytesSinceSpeed = 0L
+
+                                    val curPercent = ((received.toDouble() / model.sizeBytes) * 100).toInt().coerceIn(0, 99)
+                                    val curProgress = (received.toFloat() / model.sizeBytes).coerceIn(0f, 0.999f)
+                                    _downloadProgress.value = _downloadProgress.value + (model.id to curProgress)
+                                    _downloadProgressInfo.value = _downloadProgressInfo.value + (model.id to DownloadProgressInfo(
+                                        progress = curProgress,
+                                        percent = curPercent,
+                                        bytesDownloaded = received,
+                                        totalBytes = model.sizeBytes,
+                                        speedText = speedString,
+                                        isVerifying = false
+                                    ))
+                                }
                             }
                         }
                     }
+
+                    // Set verifying state
+                    _downloadProgress.value = _downloadProgress.value + (model.id to 1.0f)
+                    _downloadProgressInfo.value = _downloadProgressInfo.value + (model.id to DownloadProgressInfo(
+                        progress = 1.0f,
+                        percent = 100,
+                        bytesDownloaded = model.sizeBytes,
+                        totalBytes = model.sizeBytes,
+                        speedText = "Memverifikasi...",
+                        isVerifying = true
+                    ))
+
                     coroutineContext.ensureActive()
                     val actualHash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
                     if (received != model.sizeBytes || actualHash != model.sha256) {
@@ -225,6 +286,7 @@ class ModelDownloader(private val context: Context) {
                 } finally {
                     connection?.disconnect()
                     _downloadProgress.value = _downloadProgress.value - model.id
+                    _downloadProgressInfo.value = _downloadProgressInfo.value - model.id
                 }
             }
         }
@@ -298,6 +360,24 @@ class ModelDownloader(private val context: Context) {
         const val MODEL_TINYLLAMA_SHA256 = "0f09dc7f792bb8d49b6629effaee3ed1a99e4506b082cd353471bdf391dee053"
         const val MODEL_TINYLLAMA_URL = "https://huggingface.co/litert-community/TinyLlama-1.1B-Chat-v1.0/resolve/main/TinyLlama-1.1B-Chat-v1.0_multi-prefill-seq_q8_ekv1280.task"
         private const val HTTP_RANGE_NOT_SATISFIABLE = 416
+
+        fun formatBytes(bytes: Long): String {
+            val mb = bytes.toDouble() / (1024.0 * 1024.0)
+            return if (mb >= 1024.0) {
+                String.format(java.util.Locale.US, "%.2f GB", mb / 1024.0)
+            } else {
+                String.format(java.util.Locale.US, "%.1f MB", mb)
+            }
+        }
+
+        fun formatSpeed(bytesPerSec: Long): String {
+            val kb = bytesPerSec / 1024.0
+            return if (kb >= 1024.0) {
+                String.format(java.util.Locale.US, "%.1f MB/s", kb / 1024.0)
+            } else {
+                String.format(java.util.Locale.US, "%d KB/s", kb.toLong())
+            }
+        }
     }
 }
 

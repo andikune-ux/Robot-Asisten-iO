@@ -6,6 +6,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -22,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -33,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.andikune.robotasisten.io.util.CrashHandler
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,17 +67,29 @@ fun CrashReportScreen(onNavigateBack: () -> Unit) {
             if (report.isNullOrBlank()) {
                 Text("Belum ada force close yang tertangkap sejak fitur laporan crash aktif.", style = MaterialTheme.typography.bodyMedium)
             } else {
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                Surface(
+                    color = androidx.compose.ui.graphics.Color(0xFF0F172A),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).fillMaxWidth()
                 ) {
-                    Text(report.orEmpty(), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    Column(
+                        modifier = Modifier.padding(12.dp).verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = report.orEmpty(),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            color = androidx.compose.ui.graphics.Color(0xFFE2E8F0)
+                        )
+                    }
                 }
                 Button(
                     onClick = {
                         runCatching {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText("RELX.iO crash report", report))
-                        }.onSuccess { Toast.makeText(context, "Laporan crash disalin", Toast.LENGTH_SHORT).show() }
+                        }.onSuccess { Toast.makeText(context, "📋 Laporan crash disalin ke clipboard", Toast.LENGTH_SHORT).show() }
                             .onFailure { Toast.makeText(context, "Gagal menyalin laporan", Toast.LENGTH_SHORT).show() }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -82,16 +97,27 @@ fun CrashReportScreen(onNavigateBack: () -> Unit) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null)
                     Text("  Salin Cepat")
                 }
-                OutlinedButton(
-                    onClick = {
-                        CrashHandler.clear(context)
-                        report = null
-                        Toast.makeText(context, "Laporan crash dihapus", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Default.Delete, contentDescription = null)
-                    Text("  Hapus laporan")
+                    OutlinedButton(
+                        onClick = onNavigateBack,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Kembali")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            CrashHandler.clear(context)
+                            report = null
+                            Toast.makeText(context, "Laporan crash dihapus", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null)
+                        Text("  Hapus")
+                    }
                 }
             }
         }

@@ -347,16 +347,51 @@ fun AutomationRuntimePanel(
 
                             Spacer(modifier = Modifier.width(10.dp))
 
-                            val dynamicStatusTitle = when (currentStep) {
-                                RuntimeStep.SCANNING -> "1. Sedang memindai tampilan layar..."
-                                RuntimeStep.QUESTIONS_DETECTED -> "2. Menemukan pertanyaan [Terdeteksi $totalQuestions Pertanyaan]"
-                                RuntimeStep.OCR_EXTRACTING -> "3. Membaca & mengekstrak teks pertanyaan (OCR)"
-                                RuntimeStep.ANALYZING_ANSWER -> "4. Menganalisis pertanyaan & mencari jawaban terbaik..."
-                                RuntimeStep.FILLING_ANSWER -> "5. Mengisi / memilih jawaban otomatis pada pertanyaan [Ke-$currentQuestionIndex]"
-                                RuntimeStep.ANSWER_SUCCESS -> "6. Jawaban berhasil diberikan!"
-                                RuntimeStep.AUTO_SCROLLING -> "7. Menggulir layar (auto-scroll) / berpindah ke pertanyaan berikutnya..."
-                                RuntimeStep.COMPLETED -> "Seluruh tugas telah selesai diproses."
-                                else -> currentStep.title
+                            val dynamicStatusTitle = when (tool) {
+                                AutomationTool.PREPARE_ANSWER -> when (currentStep) {
+                                    RuntimeStep.SCANNING -> "1. Sedang memindai tampilan layar..."
+                                    RuntimeStep.QUESTIONS_DETECTED -> "2. Menemukan pertanyaan [Terdeteksi $totalQuestions Pertanyaan]"
+                                    RuntimeStep.OCR_EXTRACTING -> "3. Membaca & mengekstrak teks pertanyaan (OCR)"
+                                    RuntimeStep.ANALYZING_ANSWER -> "4. Menganalisis pertanyaan & menyiapkan jawaban..."
+                                    RuntimeStep.FILLING_ANSWER -> "5. Hasil jawaban siap ditampilkan (View-Only)"
+                                    RuntimeStep.ANSWER_SUCCESS -> "6. Jawaban siap dibaca di overlay!"
+                                    RuntimeStep.AUTO_SCROLLING -> "7. Memindai pertanyaan berikutnya..."
+                                    RuntimeStep.COMPLETED -> "Seluruh jawaban selesai disiapkan (View-Only)."
+                                    else -> currentStep.title
+                                }
+                                AutomationTool.ANALYZE_SCREEN -> when (currentStep) {
+                                    RuntimeStep.SCANNING -> "1. Sedang memindai tampilan layar..."
+                                    RuntimeStep.QUESTIONS_DETECTED -> "2. Menemukan konten soal [Terdeteksi $totalQuestions Soal]"
+                                    RuntimeStep.OCR_EXTRACTING -> "3. Membaca teks lengkap & opsi jawaban (OCR)"
+                                    RuntimeStep.ANALYZING_ANSWER -> "4. Menyusun analisis mendalam & rationale..."
+                                    RuntimeStep.FILLING_ANSWER -> "5. Analisis komprehensif siap ditampilkan"
+                                    RuntimeStep.ANSWER_SUCCESS -> "6. Analisis mendalam selesai!"
+                                    RuntimeStep.AUTO_SCROLLING -> "7. Beralih ke analisis soal berikutnya..."
+                                    RuntimeStep.COMPLETED -> "Seluruh analisis soal selesai diproses."
+                                    else -> currentStep.title
+                                }
+                                AutomationTool.RAILX_POWER -> when (currentStep) {
+                                    RuntimeStep.SCANNING -> "1. Sedang memindai tampilan layar..."
+                                    RuntimeStep.QUESTIONS_DETECTED -> "2. Menemukan pertanyaan [Terdeteksi $totalQuestions Pertanyaan]"
+                                    RuntimeStep.OCR_EXTRACTING -> "3. Membaca & mengekstrak teks pertanyaan (OCR)"
+                                    RuntimeStep.ANALYZING_ANSWER -> "4. Menganalisis target aksi terbaik..."
+                                    RuntimeStep.FILLING_ANSWER -> "5. Mengeksekusi aksi interaktif otomatis pada layar target..."
+                                    RuntimeStep.ANSWER_SUCCESS -> "6. Aksi otomatis berhasil dieksekusi!"
+                                    RuntimeStep.AUTO_SCROLLING -> "7. Menekan Selanjutnya / Auto-scroll ke soal berikutnya..."
+                                    RuntimeStep.COMPLETED -> "Seluruh tugas automasi telah selesai diproses."
+                                    else -> currentStep.title
+                                }
+                                AutomationTool.OCR_READ -> when (currentStep) {
+                                    RuntimeStep.SCANNING -> "1. Sedang memindai teks dari tampilan layar..."
+                                    RuntimeStep.QUESTIONS_DETECTED -> "2. Mengidentifikasi area teks layar..."
+                                    RuntimeStep.OCR_EXTRACTING -> "3. Mengekstrak seluruh teks visual (OCR)..."
+                                    RuntimeStep.ANALYZING_ANSWER -> "4. Menyusun dan merapikan teks dokumen..."
+                                    RuntimeStep.FILLING_ANSWER -> "5. Menyalin seluruh teks ke clipboard..."
+                                    RuntimeStep.ANSWER_SUCCESS -> "6. Teks berhasil disalin (Tanpa Batas Karakter)!"
+                                    RuntimeStep.AUTO_SCROLLING -> "7. Menggulir layar untuk ekstraksi halaman berikutnya..."
+                                    RuntimeStep.COMPLETED -> "Seluruh teks layar berhasil diekstraksi."
+                                    else -> currentStep.title
+                                }
                             }
 
                             Text(
@@ -367,11 +402,11 @@ fun AutomationRuntimePanel(
                             )
                         }
 
-                        // Preview snippet of current question
-                        if (currentQuestionText.isNotBlank()) {
+                        // Preview snippet of current question (for tools that process questions)
+                        if (currentQuestionText.isNotBlank() && tool != AutomationTool.OCR_READ) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Soal:",
+                                text = "Soal Terdeteksi:",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -385,22 +420,177 @@ fun AutomationRuntimePanel(
                             )
                         }
 
-                        // Preview snippet of current answer
+                        // Distinct Result Display according to tool
                         if (currentAnswerText.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Jawaban:",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = SuccessGreen
-                            )
-                            Text(
-                                text = currentAnswerText,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            val context = androidx.compose.ui.platform.LocalContext.current
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            when (tool) {
+                                AutomationTool.PREPARE_ANSWER -> {
+                                    // View-Only Answer Card
+                                    Surface(
+                                        color = TechBluePrimary.copy(alpha = 0.1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "🎯 Jawaban Siap (View-Only):",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TechBluePrimary
+                                                )
+                                                IconButton(
+                                                    onClick = {
+                                                        dev.andikune.robotasisten.io.util.ClipboardHelper.copyToClipboard(context, "Jawaban RAILX", currentAnswerText)
+                                                        dev.andikune.robotasisten.io.util.ToastHelper.showShort(context, "Jawaban disalin ke clipboard")
+                                                    },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = "Salin",
+                                                        tint = TechBluePrimary,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = currentAnswerText,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "🔒 Murni informatif di overlay. Tanpa klik otomatis pada layar target.",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+
+                                AutomationTool.ANALYZE_SCREEN -> {
+                                    // In-depth Rationale Card
+                                    Surface(
+                                        color = CyanAccent.copy(alpha = 0.1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "📖 Analisis & Pembahasan Mendalam:",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = CyanAccent
+                                                )
+                                                IconButton(
+                                                    onClick = {
+                                                        dev.andikune.robotasisten.io.util.ClipboardHelper.copyToClipboard(context, "Analisis Layar RAILX", currentAnswerText)
+                                                        dev.andikune.robotasisten.io.util.ToastHelper.showShort(context, "Analisis disalin ke clipboard")
+                                                    },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = "Salin Analisis",
+                                                        tint = CyanAccent,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = currentAnswerText,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+
+                                AutomationTool.RAILX_POWER -> {
+                                    // Live Runtime Action Indicator
+                                    Surface(
+                                        color = WarningAmber.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Text(
+                                                text = "⚡ Eksekusi Automasi Target:",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = WarningAmber
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = currentAnswerText,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+
+                                AutomationTool.OCR_READ -> {
+                                    // Extracted OCR text with character/word counter & full copy
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            val charCount = currentAnswerText.length
+                                            val wordCount = currentAnswerText.split("\\s+".toRegex()).count { it.isNotBlank() }
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "📸 Teks OCR ($charCount karakter · $wordCount kata):",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Button(
+                                                    onClick = {
+                                                        dev.andikune.robotasisten.io.util.ClipboardHelper.copyToClipboard(context, "Teks OCR Layar", currentAnswerText)
+                                                        dev.andikune.robotasisten.io.util.ToastHelper.showShort(context, "Seluruh teks berhasil disalin tanpa batas karakter!")
+                                                    },
+                                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(26.dp),
+                                                    shape = RoundedCornerShape(6.dp)
+                                                ) {
+                                                    Text("Salin Semua", fontSize = 11.sp)
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = currentAnswerText,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                                                maxLines = 6,
+                                                overflow = TextOverflow.Ellipsis,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

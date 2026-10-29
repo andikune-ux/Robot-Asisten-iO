@@ -94,7 +94,8 @@ class CloudAi(
 
         return withContext(Dispatchers.IO) {
             try {
-                val provider = AiProviderConfig.getProvider(providerName)
+                val provider = AiProviderConfig.findProviderOrNull(providerName)
+                    ?: return@withContext Result.failure(IllegalArgumentException("Provider AI '$providerName' tidak didukung."))
                 val request = when {
                     isGemini(provider) && customBaseUrl.isNullOrBlank() -> {
                         val testUrl = "https://generativelanguage.googleapis.com/v1beta/models?key=$cleanKey"
@@ -163,7 +164,11 @@ class CloudAi(
 
         return withContext(Dispatchers.IO) {
             try {
-                val provider = AiProviderConfig.getProvider(providerName)
+                val provider = AiProviderConfig.findProviderOrNull(providerName)
+                if (provider == null) {
+                    LogHelper.w("CloudAi", "Provider '$providerName' tidak ditemukan atau tidak didukung.")
+                    return@withContext "Provider AI '$providerName' tidak didukung."
+                }
                 val sanitizedQuery = SanitizerHelper.sanitizeQuery(question)
                 val detected = QuestionDetector.detect(sanitizedQuery)
                 val rawPrompt = PromptBuilder.buildPrompt(sanitizedQuery, detected.type, detected.options)
@@ -219,7 +224,11 @@ class CloudAi(
 
         return withContext(Dispatchers.IO) {
             try {
-                val provider = AiProviderConfig.getProvider(providerName)
+                val provider = AiProviderConfig.findProviderOrNull(providerName)
+                if (provider == null) {
+                    LogHelper.w("CloudAi", "Provider '$providerName' tidak ditemukan atau tidak didukung.")
+                    return@withContext "Provider AI '$providerName' tidak didukung."
+                }
                 val systemPrompt = buildString {
                     if (persona.isNotBlank()) appendLine(persona.take(1000))
                     if (memory.isNotBlank()) appendLine("Konteks/Memori: ${memory.take(1000)}")

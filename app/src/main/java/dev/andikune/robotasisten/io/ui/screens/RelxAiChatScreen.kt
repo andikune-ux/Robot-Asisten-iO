@@ -287,8 +287,12 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
                 }
             }
             LaunchedEffect(messages.size, busy) {
-                val lastIndex = messages.lastIndex + if (busy) 1 else 0
-                if (lastIndex >= 0) listState.animateScrollToItem(lastIndex)
+                runCatching {
+                    val totalItems = messages.size + if (busy) 1 else 0
+                    if (totalItems > 0) {
+                        listState.animateScrollToItem(totalItems - 1)
+                    }
+                }
             }
             if (attachmentStatus.isNotBlank()) {
                 Text(

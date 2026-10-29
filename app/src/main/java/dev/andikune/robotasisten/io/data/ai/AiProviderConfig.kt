@@ -128,7 +128,14 @@ object AiProviderConfig {
     )
 
     fun getProvider(id: String): AiProviderItem {
-        return supportedProviders.find { it.id.equals(id, ignoreCase = true) }
-            ?: throw IllegalArgumentException("Provider tidak didukung: $id")
+        return supportedProviders.find { 
+            it.id.equals(id, ignoreCase = true) || it.name.equals(id, ignoreCase = true) 
+        } ?: throw IllegalArgumentException("Provider tidak didukung: $id")
+    }
+
+    fun findProviderOrNull(id: String): AiProviderItem? {
+        return supportedProviders.find { 
+            it.id.equals(id, ignoreCase = true) || it.name.equals(id, ignoreCase = true) 
+        }
     }
 }

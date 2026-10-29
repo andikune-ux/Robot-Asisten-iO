@@ -33,8 +33,8 @@ class ApiKeyStore(context: Context) {
             context.deleteSharedPreferences("raio_secure_keys")
             createEncryptedPrefs(context)
         } catch (e2: Exception) {
-            LogHelper.e("ApiKeyStore", "EncryptedSharedPreferences recovery failed", e2)
-            throw IllegalStateException("Tidak dapat menginisialisasi penyimpanan kunci terenkripsi", e2)
+            LogHelper.e("ApiKeyStore", "EncryptedSharedPreferences recovery failed, using safe fallback", e2)
+            context.getSharedPreferences("raio_secure_keys_fallback", Context.MODE_PRIVATE)
         }
     }
 

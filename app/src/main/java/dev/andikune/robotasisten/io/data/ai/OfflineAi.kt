@@ -49,16 +49,23 @@ class OfflineAi(
             it.id.equals(selectedModelName, ignoreCase = true) ||
             it.name.equals(selectedModelName, ignoreCase = true) ||
             (selectedModelName.equals("Qwen 2.5 0.5B", ignoreCase = true) && it.id == ModelDownloader.MODEL_ID)
-        } ?: return@withContext null
+        } ?: modelDownloader.availableModels.first()
 
-        if (userMessage.isBlank() || !modelDownloader.isModelDownloaded(modelSpec)) {
-            LogHelper.w("OfflineAi", "Pesan kosong atau model belum terverifikasi")
+        if (userMessage.isBlank()) {
             return@withContext null
+        }
+
+        if (!modelDownloader.isModelDownloaded(modelSpec)) {
+            LogHelper.w("OfflineAi", "Model ${modelSpec.name} belum diunduh")
+            return@withContext "Model AI Offline (${modelSpec.name}) belum diunduh atau belum selesai. Silakan unduh model di halaman Mode AI Offline terlebih dahulu, atau gunakan Mode AI Cloud."
         }
 
         inferenceMutex.withLock {
             try {
                 val modelFile = File(FileHelper.getModelsDir(context), modelSpec.filename)
+                if (!modelFile.exists() || modelFile.length() != modelSpec.sizeBytes) {
+                    return@withLock "File model tidak lengkap di penyimpanan perangkat. Silakan buka halaman Mode AI Offline untuk mengunduh ulang model."
+                }
                 val engine = getEngine(modelFile)
 
                 val system = buildString {

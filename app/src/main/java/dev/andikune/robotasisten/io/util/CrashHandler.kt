@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import dev.andikune.robotasisten.io.BuildConfig
 import java.io.File
+import java.io.FileOutputStream
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.text.SimpleDateFormat
@@ -24,23 +25,24 @@ class CrashHandler private constructor(context: Context) : Thread.UncaughtExcept
         val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.US).format(Date())
         val trace = StringWriter().also { throwable.printStackTrace(PrintWriter(it)) }.toString()
         val report = buildString {
-            appendLine("RELX.iO — LAPORAN FORCE CLOSE")
+            appendLine("=== RELX.iO / RAILX AI — LAPORAN FORCE CLOSE ===")
             appendLine("Waktu: $stamp")
-            appendLine("Aplikasi: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+            appendLine("Versi: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             appendLine("Package: ${BuildConfig.APPLICATION_ID}")
-            appendLine("Perangkat: ${Build.MANUFACTURER} ${Build.MODEL}")
-            appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-            appendLine("Thread: ${thread.name} (id=${thread.id})")
+            appendLine("Perangkat: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE}, API ${Build.VERSION.SDK_INT})")
+            appendLine("Thread Penyebab: ${thread.name} (id=${thread.id})")
+            appendLine("Penyebab Utama: ${throwable.javaClass.name}: ${throwable.message ?: "Tanpa pesan"}")
             appendLine()
-            appendLine("=== EXCEPTION DAN STACK TRACE ===")
+            appendLine("=== STACK TRACE & LOKASI KODE ===")
             append(trace)
         }
         val target = crashFile(appContext)
-        val temporary = File(target.parentFile, "${target.name}.tmp")
-        temporary.writeText(report, Charsets.UTF_8)
-        if (!temporary.renameTo(target)) {
-            target.writeText(report, Charsets.UTF_8)
-            temporary.delete()
+        runCatching {
+            FileOutputStream(target).use { fos ->
+                fos.write(report.toByteArray(Charsets.UTF_8))
+                fos.flush()
+                fos.fd.sync()
+            }
         }
     }
 

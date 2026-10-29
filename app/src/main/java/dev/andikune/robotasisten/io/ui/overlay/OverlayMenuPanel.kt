@@ -148,7 +148,7 @@ fun OverlayMenuPanel(
             CoreToolCard(
                 icon = Icons.Default.Psychology,
                 title = "Siapkan Jawaban",
-                subtitle = if (confirmBeforeFill) "Ekstraksi & tinjau jawaban" else "Ekstraksi & isi jawaban otomatis",
+                subtitle = "Analisis soal & siapkan jawaban (view-only di overlay)",
                 accentColor = TechBluePrimary,
                 onClick = onAutoAnswer
             )
@@ -156,7 +156,7 @@ fun OverlayMenuPanel(
             CoreToolCard(
                 icon = Icons.Default.Search,
                 title = "Analisis Layar",
-                subtitle = "Pindai & deteksi struktur soal di layar",
+                subtitle = "Analisis mendalam & pembahasan rationale jawaban",
                 accentColor = CyanAccent,
                 onClick = onAnalyze
             )
@@ -164,7 +164,7 @@ fun OverlayMenuPanel(
             CoreToolCard(
                 icon = Icons.Default.AutoAwesome,
                 title = "RAILX Power",
-                subtitle = "Automasi cerdas & tugas multi-langkah",
+                subtitle = "Automasi interaktif penuh, jawab otomatis & next",
                 accentColor = WarningAmber,
                 onClick = onOpenPower
             )
@@ -172,7 +172,7 @@ fun OverlayMenuPanel(
             CoreToolCard(
                 icon = Icons.Default.DocumentScanner,
                 title = "Baca Teks Layar OCR",
-                subtitle = "Ekstraksi teks visual dari layar",
+                subtitle = "Ekstraksi & salin teks penuh tanpa batas karakter",
                 accentColor = Color(0xFF8B5CF6),
                 onClick = onOcrRead
             )

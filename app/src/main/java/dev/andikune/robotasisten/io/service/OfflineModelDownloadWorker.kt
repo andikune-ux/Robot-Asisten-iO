@@ -1,6 +1,5 @@
 package dev.andikune.robotasisten.io.service
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -10,9 +9,11 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import dev.andikune.robotasisten.io.R
-import dev.andikune.robotasisten.io.data.ai.ModelDownloader
 import dev.andikune.robotasisten.io.di.AppModule
 import dev.andikune.robotasisten.io.util.Constants
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /** Persists model downloads beyond the Compose screen and survives app UI destruction. */
 class OfflineModelDownloadWorker(
@@ -21,12 +22,34 @@ class OfflineModelDownloadWorker(
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
         val modelId = inputData.getString(KEY_MODEL_ID) ?: return Result.failure()
-        val downloader = ModelDownloader(applicationContext)
+        val downloader = AppModule.provideModelDownloader(applicationContext)
         val model = downloader.availableModels.firstOrNull { it.id == modelId } ?: return Result.failure()
         createChannel()
-        promoteToForeground(createForegroundInfo(model.name, 0))
+        promoteToForeground(createForegroundInfo(model.name, 0, "Memulai unduhan..."))
+
+        val monitorJob = CoroutineScope(Dispatchers.Default).launch {
+            downloader.downloadProgressInfo.collect { map ->
+                val info = map[model.id]
+                if (info != null) {
+                    val statusText = if (info.isVerifying) {
+                        "Memverifikasi integritas hash SHA-256 (100%)..."
+                    } else {
+                        "${info.percent}% · ${info.speedText}"
+                    }
+                    runCatching {
+                        promoteToForeground(createForegroundInfo(model.name, info.percent, statusText))
+                    }
+                }
+            }
+        }
+
         var succeeded = false
-        downloader.startDownload(model) { result -> succeeded = result }
+        try {
+            downloader.startDownload(model) { result -> succeeded = result }
+        } finally {
+            monitorJob.cancel()
+        }
+
         if (succeeded) AppModule.provideSettingsRepository(applicationContext).setSelectedOfflineModel(model.id)
         return if (succeeded) Result.success() else retryOrFailure()
     }
@@ -38,12 +61,12 @@ class OfflineModelDownloadWorker(
         setForegroundAsync(info).get()
     }
 
-    private fun createForegroundInfo(modelName: String, progress: Int): ForegroundInfo {
+    private fun createForegroundInfo(modelName: String, progress: Int, detailText: String): ForegroundInfo {
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_robot)
-            .setContentTitle(Constants.APP_NAME)
-            .setContentText("Mengunduh model offline: $modelName")
-            .setProgress(100, progress.coerceIn(0, 100), progress == 0)
+            .setContentTitle("Unduhan Model AI: $modelName")
+            .setContentText(detailText.ifBlank { "Mengunduh model offline..." })
+            .setProgress(100, progress.coerceIn(0, 100), progress == 0 && detailText.isBlank())
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
