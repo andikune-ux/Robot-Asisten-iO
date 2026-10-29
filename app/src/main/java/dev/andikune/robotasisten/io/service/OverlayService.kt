@@ -658,134 +658,197 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
      * Langsung mengeksekusi klik opsi atau isi jawaban pada layar target, menekan Next, dan auto-scroll.
      */
     private suspend fun runRailxPowerWorkflow() {
-        // STEP 1: Scanning
         currentRuntimeStep.value = RuntimeStep.SCANNING
         bubbleStatus.value = BubbleStatus.SCANNING
-        minimizedStatusText.value = "Sedang memindai tampilan layar..."
+        minimizedStatusText.value = "Memulai automasi RAILX Power presisi..."
         HapticHelper.vibrateClick(this@OverlayService)
-        delay(700)
-
-        val rawText = captureScreenTextWithRetry()
-        while (isPaused.value) { delay(400) }
-
-        // STEP 2: Detecting questions
-        val questions = QuestionDetector.detectAll(rawText)
-        val totalCount = questions.size.coerceAtLeast(1)
-        totalDetectedQuestions.intValue = totalCount
-        currentRuntimeStep.value = RuntimeStep.QUESTIONS_DETECTED
-        minimizedStatusText.value = "Menemukan pertanyaan [Terdeteksi $totalCount Pertanyaan]"
-        delay(800)
+        delay(600)
 
         val settings = AppModule.provideSettingsRepository(this@OverlayService)
         val fallbackChain = AppModule.provideFallbackChain(this@OverlayService)
         val historyRepo = AppModule.provideHistoryRepository(this@OverlayService)
         val mode = settings.activeMode.value
 
-        for (index in 0 until totalCount) {
-            while (isPaused.value) { delay(400) }
-            val question = if (index < questions.size) questions[index] else QuestionDetector.detect(rawText)
-            currentQuestionIdx.intValue = index + 1
-            currentQuestionText.value = question.questionText
+        var processedQuestionCount = 0
+        var bottomScrollAttempts = 0
+        val maxBottomScrollAttempts = 3
+        val processedQuestionsFingerprints = mutableSetOf<String>()
 
-            // STEP 3: OCR
-            currentRuntimeStep.value = RuntimeStep.OCR_EXTRACTING
-            bubbleStatus.value = BubbleStatus.ANALYZING
-            minimizedStatusText.value = "Membaca target interaktif (Soal ${index + 1}/$totalCount)"
-            delay(600)
-
+        while (true) {
             while (isPaused.value) { delay(400) }
 
-            // STEP 4: Analyzing action target
-            currentRuntimeStep.value = RuntimeStep.ANALYZING_ANSWER
-            bubbleStatus.value = BubbleStatus.ANALYZING
-            minimizedStatusText.value = "Menganalisis target aksi [Ke-${index + 1}]..."
+            // STEP 1: Scanning current screen state
+            currentRuntimeStep.value = RuntimeStep.SCANNING
+            bubbleStatus.value = BubbleStatus.SCANNING
+            minimizedStatusText.value = "Memindai layar aktif [Soal terjawab: $processedQuestionCount]..."
 
-            val powerPrompt = PromptBuilder.buildPowerAutoFillPrompt(
-                question = question.questionText,
-                type = question.type,
-                options = question.options
-            )
-            val effectivePrompt = if (userCommandPrompt.value.isNotBlank()) {
-                "$powerPrompt\n[Instruksi: ${userCommandPrompt.value}]"
-            } else {
-                powerPrompt
-            }
+            val rawText = captureScreenTextWithRetry()
+            val screenFingerprint = rawText.trim().take(120).hashCode().toString()
 
-            val resolution = fallbackChain.resolve(effectivePrompt, mode, question.type)
-            currentAnswerText.value = resolution.answer
+            val detectedList = QuestionDetector.detectAll(rawText).filter { it.questionText.isNotBlank() }
+            val unhandledQuestion = detectedList.firstOrNull { q ->
+                val qHash = q.questionText.trim().take(60).hashCode().toString()
+                !processedQuestionsFingerprints.contains(qHash)
+            } ?: detectedList.firstOrNull()
 
-            historyRepo.recordAnswer(
-                question = question.questionText,
-                answer = resolution.answer,
-                mode = mode,
-                questionType = question.type.name,
-                isCacheHit = resolution.isCacheHit
-            )
+            if (unhandledQuestion != null) {
+                bottomScrollAttempts = 0 // Reset bottom counter because questions exist
+                val qHash = unhandledQuestion.questionText.trim().take(60).hashCode().toString()
+                processedQuestionsFingerprints.add(qHash)
+                processedQuestionCount++
 
-            delay(700)
-            while (isPaused.value) { delay(400) }
+                currentQuestionIdx.intValue = processedQuestionCount
+                currentQuestionText.value = unhandledQuestion.questionText
+                totalDetectedQuestions.intValue = detectedList.size.coerceAtLeast(processedQuestionCount)
 
-            // STEP 5: REAL INTERACTIVE ACTION EXECUTION ON TARGET SCREEN
-            currentRuntimeStep.value = RuntimeStep.FILLING_ANSWER
-            bubbleStatus.value = BubbleStatus.ANSWERING
-            minimizedStatusText.value = "Mengeksekusi aksi otomatis pada layar [Ke-${index + 1}]"
+                // STEP 2: Analyzing question target
+                currentRuntimeStep.value = RuntimeStep.OCR_EXTRACTING
+                bubbleStatus.value = BubbleStatus.ANALYZING
+                minimizedStatusText.value = "Menganalisis target presisi (Soal #$processedQuestionCount)..."
+                delay(500)
 
-            val actionResult = suspendCoroutine<InteractiveActionResult> { cont ->
-                AutoFillEngine.executeInteractiveAction(
-                    context = this@OverlayService,
+                while (isPaused.value) { delay(400) }
+
+                // STEP 3: AI Model Resolution
+                currentRuntimeStep.value = RuntimeStep.ANALYZING_ANSWER
+                minimizedStatusText.value = "Menentukan jawaban presisi [Ke-$processedQuestionCount]..."
+
+                val powerPrompt = PromptBuilder.buildPowerAutoFillPrompt(
+                    question = unhandledQuestion.questionText,
+                    type = unhandledQuestion.type,
+                    options = unhandledQuestion.options
+                )
+                val effectivePrompt = if (userCommandPrompt.value.isNotBlank()) {
+                    "$powerPrompt\n[Instruksi: ${userCommandPrompt.value}]"
+                } else {
+                    powerPrompt
+                }
+
+                val resolution = fallbackChain.resolve(effectivePrompt, mode, unhandledQuestion.type)
+                currentAnswerText.value = resolution.answer
+
+                historyRepo.recordAnswer(
+                    question = unhandledQuestion.questionText,
                     answer = resolution.answer,
-                    question = question
-                ) { result ->
-                    cont.resume(result)
-                }
-            }
+                    mode = mode,
+                    questionType = unhandledQuestion.type.name,
+                    isCacheHit = resolution.isCacheHit
+                )
 
-            when (actionResult) {
-                is InteractiveActionResult.ClickedOption -> {
-                    currentAnswerText.value = "🔘 Memilih Opsi: ${actionResult.label}"
-                }
-                is InteractiveActionResult.FilledField -> {
-                    currentAnswerText.value = "✍️ Mengisi Teks: ${actionResult.text.take(40)}..."
-                }
-                is InteractiveActionResult.ClickedNext -> {
-                    currentAnswerText.value = "➡️ Tombol Selanjutnya ditekan"
-                }
-                else -> {
-                    currentAnswerText.value = "📋 Jawaban disalin: ${resolution.answer.take(40)}"
-                }
-            }
+                delay(600)
+                while (isPaused.value) { delay(400) }
 
-            delay(800)
+                // STEP 4: Real Precision Interactive Action on Target Screen
+                currentRuntimeStep.value = RuntimeStep.FILLING_ANSWER
+                bubbleStatus.value = BubbleStatus.ANSWERING
+                minimizedStatusText.value = "Mengeksekusi klik presisi pada opsi/input [Ke-$processedQuestionCount]..."
 
-            // Auto-click "Selanjutnya" / "Next" button if present
-            AutoFillEngine.triggerNextButton { clicked ->
-                if (clicked) {
-                    LogHelper.i("OverlayService", "Next button automatically clicked")
+                val actionResult = suspendCoroutine<InteractiveActionResult> { cont ->
+                    AutoFillEngine.executeInteractiveAction(
+                        context = this@OverlayService,
+                        answer = resolution.answer,
+                        question = unhandledQuestion
+                    ) { result ->
+                        cont.resume(result)
+                    }
                 }
-            }
 
-            delay(600)
+                when (actionResult) {
+                    is InteractiveActionResult.ClickedOption -> {
+                        currentAnswerText.value = "🔘 Memilih Opsi: ${actionResult.label}"
+                    }
+                    is InteractiveActionResult.FilledField -> {
+                        currentAnswerText.value = "✍️ Mengisi Teks: ${actionResult.text.take(40)}..."
+                    }
+                    else -> {
+                        currentAnswerText.value = "📋 Jawaban disalin: ${resolution.answer.take(40)}"
+                    }
+                }
 
-            // STEP 6: Success
-            currentRuntimeStep.value = RuntimeStep.ANSWER_SUCCESS
-            bubbleStatus.value = BubbleStatus.READY
-            minimizedStatusText.value = "Aksi otomatis berhasil [Ke-${index + 1}]!"
-            SoundHelper.playSuccess()
-            HapticHelper.vibrateSuccess(this@OverlayService)
-            delay(1000)
+                delay(700)
+                while (isPaused.value) { delay(400) }
 
-            // STEP 7: Auto-scroll continuous execution if questions on long page
-            if (index < totalCount - 1 || autoScrollEnabled.value) {
-                currentRuntimeStep.value = RuntimeStep.AUTO_SCROLLING
-                minimizedStatusText.value = "Menggulir layar / lanjut ke soal berikutnya..."
-                MyAccessibilityService.scrollActiveWindowOnce(forward = true) {}
-                delay(1200)
+                // STEP 5: Click Next/Selanjutnya/Submit button with verification
+                currentRuntimeStep.value = RuntimeStep.FILLING_ANSWER
+                minimizedStatusText.value = "Mencari tombol 'Selanjutnya' di bagian bawah..."
+
+                var navigationClicked = false
+                AutoFillEngine.triggerNextButton { clicked ->
+                    navigationClicked = clicked
+                }
+
+                // Jeda 800ms untuk transisi UI layar
+                delay(850)
+
+                // STEP 6: Validasi Screen State (Mencegah Berhenti Prematur)
+                val postClickText = captureScreenTextOnce()
+                val postClickFingerprint = postClickText.trim().take(120).hashCode().toString()
+                val screenTransitioned = postClickFingerprint != screenFingerprint && postClickText.isNotBlank()
+
+                if (!screenTransitioned) {
+                    // Klik tombol belum memindahkan layar!
+                    LogHelper.w("OverlayService", "Transisi layar belum terjadi. Mencoba retry navigasi presisi...")
+                    minimizedStatusText.value = "Memverifikasi navigasi: mencoba penyesuaian..."
+
+                    // Coba retry klik tombol navigasi
+                    AutoFillEngine.triggerNextButton { }
+                    delay(650)
+
+                    val retryText = captureScreenTextOnce()
+                    val retryFingerprint = retryText.trim().take(120).hashCode().toString()
+                    if (retryFingerprint == screenFingerprint) {
+                        // Masih belum pindah: gulir layar ke bawah (auto-scroll) untuk memunculkan tombol atau soal berikutnya
+                        currentRuntimeStep.value = RuntimeStep.AUTO_SCROLLING
+                        minimizedStatusText.value = "Menggulir layar untuk memunculkan soal/tombol berikutnya..."
+                        MyAccessibilityService.scrollActiveWindowOnce(forward = true) {}
+                        delay(900)
+                    } else {
+                        currentRuntimeStep.value = RuntimeStep.ANSWER_SUCCESS
+                        bubbleStatus.value = BubbleStatus.READY
+                        minimizedStatusText.value = "Berhasil pindah ke soal berikutnya [Ke-$processedQuestionCount]!"
+                        SoundHelper.playSuccess()
+                        HapticHelper.vibrateSuccess(this@OverlayService)
+                        delay(600)
+                    }
+                } else {
+                    currentRuntimeStep.value = RuntimeStep.ANSWER_SUCCESS
+                    bubbleStatus.value = BubbleStatus.READY
+                    minimizedStatusText.value = "Aksi otomatis berhasil [Ke-$processedQuestionCount]!"
+                    SoundHelper.playSuccess()
+                    HapticHelper.vibrateSuccess(this@OverlayService)
+                    delay(600)
+                }
+
+            } else {
+                // Tidak ada pertanyaan baru terdeteksi di layar saat ini:
+                // Cek apakah ada tombol navigasi ("Selanjutnya", "Kirim", atau "Selesai") yang terlihat
+                var nextClicked = false
+                AutoFillEngine.triggerNextButton { clicked -> nextClicked = clicked }
+
+                if (nextClicked) {
+                    minimizedStatusText.value = "Menekan navigasi/kirim..."
+                    delay(900)
+                    continue
+                }
+
+                // Jika tidak ada soal dan tidak ada tombol navigasi, lakukan scroll ke bawah
+                bottomScrollAttempts++
+                if (bottomScrollAttempts <= maxBottomScrollAttempts) {
+                    currentRuntimeStep.value = RuntimeStep.AUTO_SCROLLING
+                    minimizedStatusText.value = "Mencari pertanyaan lebih lanjut (Scroll $bottomScrollAttempts/$maxBottomScrollAttempts)..."
+                    MyAccessibilityService.scrollActiveWindowOnce(forward = true) {}
+                    delay(1000)
+                } else {
+                    // Sudah 3x scroll berturut-turut di halaman paling bawah tanpa menemukan soal atau tombol baru
+                    // Seluruh tugas telah selesai!
+                    break
+                }
             }
         }
 
         currentRuntimeStep.value = RuntimeStep.COMPLETED
         bubbleStatus.value = BubbleStatus.READY
-        minimizedStatusText.value = "Seluruh tugas automasi telah selesai diproses."
+        minimizedStatusText.value = "Seluruh tugas automasi telah selesai diproses ($processedQuestionCount soal terjawab)."
         SoundHelper.playSuccess()
         HapticHelper.vibrateSuccess(this@OverlayService)
     }

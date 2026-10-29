@@ -33,29 +33,35 @@ object AutoFillEngine {
         val (optionLetter, optionText, optionIdx) = parseOptionCandidate(cleanAnswer, question)
 
         if (question.type == QuestionType.MULTIPLE_CHOICE || optionLetter.isNotEmpty()) {
-            val requested = MyAccessibilityService.clickOptionNode(optionLetter, optionText, optionIdx) { success ->
+            val requested = MyAccessibilityService.clickOptionNode(
+                optionLetter = optionLetter,
+                optionText = optionText,
+                optionIndex = optionIdx,
+                questionText = question.questionText
+            ) { success ->
                 if (success) {
                     LogHelper.i("AutoFillEngine", "Interactive click success on option: $optionLetter $optionText")
                     onComplete(InteractiveActionResult.ClickedOption("$optionLetter $optionText".trim()))
                 } else {
                     // Try field fill or fallback
-                    tryFillOrCopy(context, cleanAnswer, onComplete)
+                    tryFillOrCopy(context, cleanAnswer, question.questionText, onComplete)
                 }
             }
             if (!requested) {
-                tryFillOrCopy(context, cleanAnswer, onComplete)
+                tryFillOrCopy(context, cleanAnswer, question.questionText, onComplete)
             }
         } else {
-            tryFillOrCopy(context, cleanAnswer, onComplete)
+            tryFillOrCopy(context, cleanAnswer, question.questionText, onComplete)
         }
     }
 
     private fun tryFillOrCopy(
         context: Context,
         text: String,
+        questionText: String? = null,
         onComplete: (InteractiveActionResult) -> Unit
     ) {
-        val requested = MyAccessibilityService.fillFocusedField(text) { filled ->
+        val requested = MyAccessibilityService.fillFocusedField(text, questionText) { filled ->
             if (filled) {
                 LogHelper.i("AutoFillEngine", "Interactive text filled into field")
                 onComplete(InteractiveActionResult.FilledField(text))
@@ -81,10 +87,22 @@ object AutoFillEngine {
         answer: String,
         question: DetectedQuestion
     ): Triple<String, String, Int?> {
-        val targetMatch = "(?:TARGET|Jawaban|Pilihan)?\\s*[:=]?\\s*([A-Ea-e])[.)\\s]".toRegex(RegexOption.IGNORE_CASE)
-            .find(answer)
+        val regexes = listOf(
+            "(?:TARGET|Jawaban|Pilihan|Opsi)?\\s*[:=]?\\s*[\\*\\(\\[]*([A-Ea-e])[\\*\\)\\]\\.:\\s]".toRegex(RegexOption.IGNORE_CASE),
+            "^\\s*[\\*\\(\\[]*([A-Ea-e])[\\*\\)\\]\\.:\\s]".toRegex(RegexOption.IGNORE_CASE),
+            "(?:^|\\s)([A-Ea-e])[.)]".toRegex(),
+            "\\b([A-Ea-e])\\b".toRegex()
+        )
 
-        val letter = targetMatch?.groupValues?.get(1)?.uppercase() ?: ""
+        var letter = ""
+        for (reg in regexes) {
+            val match = reg.find(answer)
+            if (match != null) {
+                letter = match.groupValues[1].uppercase()
+                break
+            }
+        }
+
         var optionText = ""
         var optionIdx: Int? = null
 
@@ -98,7 +116,7 @@ object AutoFillEngine {
 
         if (optionText.isEmpty() && question.options.isNotEmpty()) {
             val matchedIndex = question.options.indexOfFirst { opt ->
-                answer.contains(opt, ignoreCase = true) || opt.contains(answer.take(30), ignoreCase = true)
+                answer.contains(opt, ignoreCase = true) || (opt.length > 3 && opt.contains(answer.take(30), ignoreCase = true))
             }
             if (matchedIndex != -1) {
                 val inferredLetter = ('A' + matchedIndex).toString()
