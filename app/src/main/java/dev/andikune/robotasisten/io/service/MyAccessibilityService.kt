@@ -124,6 +124,16 @@ class MyAccessibilityService : AccessibilityService() {
                     }
                 }
             })
+        } catch (se: SecurityException) {
+            Log.w(
+                CrashHandler.TAG_DEBUG,
+                "SecurityException: Layanan accessibility belum memiliki kemampuan takeScreenshot (Perlu restart toggle service di Pengaturan HP). Mengalihkan otomatis ke pembacaan hierarki teks aktif.",
+                se
+            )
+            if (completed.compareAndSet(false, true)) {
+                mainHandler.removeCallbacks(timeout)
+                callback(accessibilityTextOrFailure(se))
+            }
         } catch (t: Throwable) {
             Log.e(CrashHandler.TAG_DEBUG, "Error di [Inisiasi Tangkapan Layar takeScreenshot]: ${t.message}", t)
             CrashHandler.recordCrash(this@MyAccessibilityService, "Inisiasi Tangkapan Layar takeScreenshot", t)
