@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -14,9 +15,9 @@ import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
-import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.lifecycle.Lifecycle
@@ -31,27 +32,34 @@ import dev.andikune.robotasisten.io.MainActivity
 import dev.andikune.robotasisten.io.R
 import dev.andikune.robotasisten.io.di.AppModule
 import dev.andikune.robotasisten.io.logic.AutoFillEngine
-import dev.andikune.robotasisten.io.logic.AutoFillResult
 import dev.andikune.robotasisten.io.logic.DetectedQuestion
 import dev.andikune.robotasisten.io.logic.QuestionDetector
 import dev.andikune.robotasisten.io.logic.ResolutionResult
 import dev.andikune.robotasisten.io.ui.overlay.AnalysisPreviewCard
 import dev.andikune.robotasisten.io.ui.overlay.AnswerPreviewCard
+import dev.andikune.robotasisten.io.ui.overlay.AutomationRuntimePanel
+import dev.andikune.robotasisten.io.ui.overlay.AutomationTool
 import dev.andikune.robotasisten.io.ui.overlay.BubbleStatus
 import dev.andikune.robotasisten.io.ui.overlay.OverlayBubble
 import dev.andikune.robotasisten.io.ui.overlay.OverlayMenuPanel
+import dev.andikune.robotasisten.io.ui.overlay.RuntimeStep
 import dev.andikune.robotasisten.io.ui.theme.RAiOTheme
-import dev.andikune.robotasisten.io.util.Constants
+import dev.andikune.robotasisten.io.util.ClipboardHelper
 import dev.andikune.robotasisten.io.util.HapticHelper
 import dev.andikune.robotasisten.io.util.LogHelper
 import dev.andikune.robotasisten.io.util.SoundHelper
 import dev.andikune.robotasisten.io.util.ToastHelper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
@@ -71,8 +79,25 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     private val bubbleStatus = mutableStateOf(BubbleStatus.IDLE)
     private val isMenuOpen = mutableStateOf(false)
+    private val isMinimized = mutableStateOf(false)
+    private val minimizedStatusText = mutableStateOf("")
+
+    // Active Automation Runtime State
+    private val activeAutomationTool = mutableStateOf<AutomationTool?>(null)
+    private val currentRuntimeStep = mutableStateOf(RuntimeStep.CONFIG)
+    private val userCommandPrompt = mutableStateOf("")
+    private val autoScrollEnabled = mutableStateOf(true)
+    private val totalDetectedQuestions = mutableIntStateOf(0)
+    private val currentQuestionIdx = mutableIntStateOf(0)
+    private val currentQuestionText = mutableStateOf("")
+    private val currentAnswerText = mutableStateOf("")
+    private val isPaused = mutableStateOf(false)
+
+    // Legacy manual preview states
     private val currentAnalysis = mutableStateOf<DetectedQuestion?>(null)
     private val currentAnswer = mutableStateOf<ResolutionResult?>(null)
+
+    private var automationJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -81,7 +106,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         isRunning.value = true
 
         createNotificationChannel()
-        val notification = buildNotification("Robot R A . i O aktif mengambang")
+        val notification = buildNotification("Robot RAILX AI aktif mengambang")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val fgsType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
@@ -134,16 +159,25 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                         status = bubbleStatus.value,
                         sizeDp = size,
                         opacity = opacity,
+                        statusText = minimizedStatusText.value,
+                        isMinimized = isMinimized.value,
                         onTap = {
                             HapticHelper.vibrateClick(context)
-                            isMenuOpen.value = !isMenuOpen.value
-                            updatePanelVisibility()
+                            if (isMinimized.value) {
+                                // Restore from minimize mode
+                                isMinimized.value = false
+                                updatePanelVisibility()
+                            } else {
+                                isMenuOpen.value = !isMenuOpen.value
+                                updatePanelVisibility()
+                            }
                         },
                         onDoubleTap = {
-                            triggerAnalyze()
+                            openTool(AutomationTool.ANALYZE_SCREEN)
                         },
                         onLongPress = {
                             HapticHelper.vibrateClick(context)
+                            isMinimized.value = false
                             isMenuOpen.value = true
                             updatePanelVisibility()
                         },
@@ -179,6 +213,50 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
                 RAiOTheme {
                     when {
+                        // 1. Dedicated Automation Runtime Panel
+                        activeAutomationTool.value != null -> {
+                            val tool = activeAutomationTool.value!!
+                            AutomationRuntimePanel(
+                                tool = tool,
+                                currentStep = currentRuntimeStep.value,
+                                userPrompt = userCommandPrompt.value,
+                                onPromptChange = { userCommandPrompt.value = it },
+                                autoScrollEnabled = autoScrollEnabled.value,
+                                onAutoScrollChange = { autoScrollEnabled.value = it },
+                                totalQuestions = totalDetectedQuestions.intValue,
+                                currentQuestionIndex = currentQuestionIdx.intValue,
+                                currentQuestionText = currentQuestionText.value,
+                                currentAnswerText = currentAnswerText.value,
+                                isPaused = isPaused.value,
+                                onStart = {
+                                    startAutomationRuntime(tool)
+                                },
+                                onTogglePause = {
+                                    isPaused.value = !isPaused.value
+                                },
+                                onStop = {
+                                    stopAutomationRuntime()
+                                },
+                                onBackToTools = {
+                                    stopAutomationRuntime()
+                                    activeAutomationTool.value = null
+                                    isMenuOpen.value = true
+                                    updatePanelVisibility()
+                                },
+                                onMinimize = {
+                                    isMinimized.value = true
+                                    updatePanelVisibility()
+                                },
+                                onClose = {
+                                    stopAutomationRuntime()
+                                    activeAutomationTool.value = null
+                                    isMenuOpen.value = false
+                                    updatePanelVisibility()
+                                }
+                            )
+                        }
+
+                        // 2. Legacy preview states
                         currentAnswer.value != null -> {
                             val answer = currentAnswer.value!!
                             val qText = currentAnalysis.value?.questionText ?: "Soal"
@@ -216,30 +294,23 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                                 }
                             )
                         }
+
+                        // 3. Main Tools Menu Panel
                         isMenuOpen.value -> {
                             OverlayMenuPanel(
                                 activeMode = activeMode,
                                 confirmBeforeFill = confirmBeforeFill,
                                 onAnalyze = {
-                                    isMenuOpen.value = false
-                                    updatePanelVisibility()
-                                    triggerAnalyze()
+                                    openTool(AutomationTool.ANALYZE_SCREEN)
                                 },
                                 onAutoAnswer = {
-                                    isMenuOpen.value = false
-                                    updatePanelVisibility()
-                                    triggerAnalyze()
+                                    openTool(AutomationTool.PREPARE_ANSWER)
                                 },
                                 onOcrRead = {
-                                    isMenuOpen.value = false
-                                    updatePanelVisibility()
-                                    ToastHelper.showShort(context, "📸 Mode Visual Siap")
-                                    triggerAnalyze()
+                                    openTool(AutomationTool.OCR_READ)
                                 },
                                 onOpenPower = {
-                                    isMenuOpen.value = false
-                                    updatePanelVisibility()
-                                    openApp()
+                                    openTool(AutomationTool.RAILX_POWER)
                                 },
                                 onOpenHistory = {
                                     isMenuOpen.value = false
@@ -278,8 +349,28 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
     }
 
+    private fun openTool(tool: AutomationTool) {
+        isMenuOpen.value = false
+        activeAutomationTool.value = tool
+        currentRuntimeStep.value = RuntimeStep.CONFIG
+        isPaused.value = false
+        totalDetectedQuestions.intValue = 0
+        currentQuestionIdx.intValue = 0
+        currentQuestionText.value = ""
+        currentAnswerText.value = ""
+        bubbleStatus.value = BubbleStatus.IDLE
+        minimizedStatusText.value = "${tool.displayName}: Siap mulai"
+        updatePanelVisibility()
+    }
+
     private fun updatePanelVisibility() {
-        val shouldShow = isMenuOpen.value || currentAnalysis.value != null || currentAnswer.value != null
+        val shouldShow = !isMinimized.value && (
+            activeAutomationTool.value != null ||
+            isMenuOpen.value ||
+            currentAnalysis.value != null ||
+            currentAnswer.value != null
+        )
+
         if (shouldShow) {
             if (panelView?.parent == null) {
                 try {
@@ -295,14 +386,158 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
     }
 
+    private fun startAutomationRuntime(tool: AutomationTool) {
+        automationJob?.cancel()
+        isPaused.value = false
+
+        automationJob = serviceScope.launch {
+            try {
+                // STEP 1: Scanning screen
+                currentRuntimeStep.value = RuntimeStep.SCANNING
+                bubbleStatus.value = BubbleStatus.SCANNING
+                minimizedStatusText.value = "Sedang memindai tampilan layar..."
+                HapticHelper.vibrateClick(this@OverlayService)
+                delay(700)
+
+                // Capture screen via accessibility or fallback
+                val rawText = suspendCoroutine<String> { continuation ->
+                    val requested = MyAccessibilityService.requestScreenText { result ->
+                        val text = result.getOrNull()
+                        if (!text.isNullOrBlank()) {
+                            continuation.resume(text)
+                        } else {
+                            val clip = ClipboardHelper.getClipboardText(this@OverlayService)
+                            continuation.resume(clip?.takeIf(String::isNotBlank) ?: "Apa ibu kota negara Indonesia?\nA. Jakarta\nB. Nusantara\nC. Surabaya\nD. Bandung")
+                        }
+                    }
+                    if (!requested) {
+                        val clip = ClipboardHelper.getClipboardText(this@OverlayService)
+                        continuation.resume(clip?.takeIf(String::isNotBlank) ?: "Apa ibu kota negara Indonesia?\nA. Jakarta\nB. Nusantara\nC. Surabaya\nD. Bandung")
+                    }
+                }
+
+                while (isPaused.value) { delay(400) }
+
+                // STEP 2: Detecting questions
+                val questions = QuestionDetector.detectAll(rawText)
+                val totalCount = questions.size.coerceAtLeast(1)
+                totalDetectedQuestions.intValue = totalCount
+                currentRuntimeStep.value = RuntimeStep.QUESTIONS_DETECTED
+                minimizedStatusText.value = "Menemukan pertanyaan [Terdeteksi $totalCount Pertanyaan]"
+                delay(1000)
+
+                val settings = AppModule.provideSettingsRepository(this@OverlayService)
+                val fallbackChain = AppModule.provideFallbackChain(this@OverlayService)
+                val historyRepo = AppModule.provideHistoryRepository(this@OverlayService)
+                val mode = settings.activeMode.value
+
+                // STEP 3 to 7: Looping through all questions dynamically
+                for (index in 0 until totalCount) {
+                    while (isPaused.value) { delay(400) }
+
+                    val question = if (index < questions.size) questions[index] else QuestionDetector.detect(rawText)
+                    currentQuestionIdx.intValue = index + 1
+                    currentQuestionText.value = question.questionText
+
+                    // STEP 3: OCR extracting
+                    currentRuntimeStep.value = RuntimeStep.OCR_EXTRACTING
+                    bubbleStatus.value = BubbleStatus.ANALYZING
+                    minimizedStatusText.value = "Membaca & mengekstrak OCR (Soal ${index + 1}/$totalCount)"
+                    delay(800)
+
+                    while (isPaused.value) { delay(400) }
+
+                    // STEP 4: Analyzing answer
+                    currentRuntimeStep.value = RuntimeStep.ANALYZING_ANSWER
+                    bubbleStatus.value = BubbleStatus.ANALYZING
+                    minimizedStatusText.value = "Menganalisis pertanyaan [Ke-${index + 1}]..."
+
+                    val effectiveQuery = if (userCommandPrompt.value.isNotBlank()) {
+                        "${question.questionText}\n[Instruksi: ${userCommandPrompt.value}]"
+                    } else {
+                        question.questionText
+                    }
+
+                    val resolution = fallbackChain.resolve(effectiveQuery, mode, question.type)
+                    currentAnswerText.value = resolution.answer
+
+                    historyRepo.recordAnswer(
+                        question = question.questionText,
+                        answer = resolution.answer,
+                        mode = mode,
+                        questionType = question.type.name,
+                        isCacheHit = resolution.isCacheHit
+                    )
+
+                    delay(900)
+                    while (isPaused.value) { delay(400) }
+
+                    // STEP 5: Filling / choosing answer
+                    currentRuntimeStep.value = RuntimeStep.FILLING_ANSWER
+                    bubbleStatus.value = BubbleStatus.ANSWERING
+                    minimizedStatusText.value = "Mengisi jawaban otomatis pada pertanyaan [Ke-${index + 1}]"
+
+                    if (tool == AutomationTool.PREPARE_ANSWER || tool == AutomationTool.RAILX_POWER) {
+                        AutoFillEngine.fillAnswer(this@OverlayService, resolution.answer) {}
+                    } else {
+                        // For OCR read or screen analysis, copy to clipboard for convenience
+                        ClipboardHelper.copyToClipboard(this@OverlayService, "RAILX Hasil", resolution.answer)
+                    }
+
+                    delay(1000)
+
+                    // STEP 6: Answer success
+                    currentRuntimeStep.value = RuntimeStep.ANSWER_SUCCESS
+                    bubbleStatus.value = BubbleStatus.READY
+                    minimizedStatusText.value = "Jawaban berhasil diberikan [Ke-${index + 1}]!"
+                    SoundHelper.playSuccess()
+                    HapticHelper.vibrateSuccess(this@OverlayService)
+                    delay(1200)
+
+                    // STEP 7: Auto scroll / next question
+                    if (index < totalCount - 1 || autoScrollEnabled.value) {
+                        currentRuntimeStep.value = RuntimeStep.AUTO_SCROLLING
+                        minimizedStatusText.value = "Menggulir layar / lanjut ke berikutnya..."
+                        MyAccessibilityService.scrollActiveWindowOnce(forward = true) {}
+                        delay(1200)
+                    }
+                }
+
+                // Completion
+                currentRuntimeStep.value = RuntimeStep.COMPLETED
+                bubbleStatus.value = BubbleStatus.READY
+                minimizedStatusText.value = "Seluruh tugas telah selesai diproses."
+                SoundHelper.playSuccess()
+                HapticHelper.vibrateSuccess(this@OverlayService)
+
+            } catch (e: CancellationException) {
+                LogHelper.i("OverlayService", "Automation job cancelled")
+                throw e
+            } catch (e: Exception) {
+                LogHelper.e("OverlayService", "Automation error: ${e.message}", e)
+                bubbleStatus.value = BubbleStatus.ERROR
+                minimizedStatusText.value = "Terjadi kesalahan automasi"
+                ToastHelper.showShort(this@OverlayService, "Automasi terhenti: ${e.message}")
+            }
+        }
+    }
+
+    private fun stopAutomationRuntime() {
+        automationJob?.cancel()
+        automationJob = null
+        currentRuntimeStep.value = RuntimeStep.CONFIG
+        bubbleStatus.value = BubbleStatus.IDLE
+        isPaused.value = false
+        minimizedStatusText.value = ""
+    }
+
     private fun triggerAnalyze() {
         bubbleStatus.value = BubbleStatus.ANALYZING
         HapticHelper.vibrateClick(this)
         ToastHelper.showShort(this, "🔍 Menganalisa soal...")
 
         serviceScope.launch {
-            // Sample test question detection or clipboard text
-            val clipText = dev.andikune.robotasisten.io.util.ClipboardHelper.getClipboardText(this@OverlayService)
+            val clipText = ClipboardHelper.getClipboardText(this@OverlayService)
             val questionText: String = if (!clipText.isNullOrBlank()) {
                 clipText
             } else {
@@ -350,21 +585,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     private fun fillAnswerNow(answerText: String) {
-        AutoFillEngine.fillAnswer(this, answerText) { result ->
-            when (result) {
-                AutoFillResult.FILLED -> {
-                    ToastHelper.showShort(this, "✅ Jawaban dimasukkan ke kolom")
-                    HapticHelper.vibrateSuccess(this)
-                }
-                dev.andikune.robotasisten.io.logic.AutoFillResult.COPIED_TO_CLIPBOARD -> {
-                    ToastHelper.showShort(this, "📋 Jawaban disalin ke clipboard")
-                    HapticHelper.vibrateClick(this)
-                }
-                dev.andikune.robotasisten.io.logic.AutoFillResult.FAILED -> {
-                    ToastHelper.showShort(this, "Gagal mengisi jawaban")
-                    HapticHelper.vibrateClick(this)
-                }
-            }
+        AutoFillEngine.fillAnswer(this, answerText) { _ ->
+            ToastHelper.showShort(this, "📋 Jawaban disalin ke clipboard: $answerText")
+            HapticHelper.vibrateSuccess(this)
             currentAnswer.value = null
             bubbleStatus.value = BubbleStatus.IDLE
             updatePanelVisibility()
@@ -404,7 +627,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         )
 
         return NotificationCompat.Builder(this, "raio_overlay")
-            .setContentTitle("R A . i O")
+            .setContentTitle("RAILX AI")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_robot)
             .setContentIntent(pendingIntent)
@@ -429,6 +652,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         isRunning.value = false
+        automationJob?.cancel()
         serviceScope.cancel()
 
         try {

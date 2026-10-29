@@ -78,6 +78,36 @@ object QuestionDetector {
 
     private fun extractedOptionsCount(text: String): Int = extractTextOptions(text).size
 
+    fun detectAll(text: String): List<DetectedQuestion> {
+        val clean = text.trim()
+        if (clean.isBlank()) return emptyList()
+
+        val questionNumberRegex = "(?m)^(?:(?:Soal|Question|Pertanyaan|No\\.?)\\s*\\d+|\\d+)[.)]\\s+".toRegex(RegexOption.IGNORE_CASE)
+        val matches = questionNumberRegex.findAll(clean).toList()
+
+        if (matches.size >= 2) {
+            val questions = mutableListOf<DetectedQuestion>()
+            for (i in matches.indices) {
+                val start = matches[i].range.first
+                val end = if (i + 1 < matches.size) matches[i + 1].range.first else clean.length
+                val chunk = clean.substring(start, end).trim()
+                if (chunk.isNotEmpty()) {
+                    questions.add(detect(chunk))
+                }
+            }
+            if (questions.isNotEmpty()) return questions
+        }
+
+        val paragraphs = clean.split("\n\n+").map(String::trim).filter(String::isNotEmpty)
+        val detectedParagraphs = paragraphs.filter { isLikelyQuestion(it) }
+        if (detectedParagraphs.size >= 2) {
+            return detectedParagraphs.map { detect(it) }
+        }
+
+        return listOf(detect(clean))
+    }
+
     private const val MAX_OPTION_DISTANCE = 10
     private const val MAX_FOCUSED_CHARS = 8_000
 }
+
