@@ -36,7 +36,6 @@ jobs:
   build-updateable-apk:
     name: Build APK with stable signing key
     if: github.event_name != 'pull_request'
-    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
