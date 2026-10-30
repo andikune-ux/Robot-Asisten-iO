@@ -43,7 +43,8 @@ class OfflineAi(
         persona: String,
         memory: String,
         instructions: String,
-        reasoningDepth: String = "balanced"
+        reasoningDepth: String = "balanced",
+        chatMode: RailxChatMode = RailxChatMode.SEDANG
     ): String? = withContext(Dispatchers.IO) {
         val modelSpec = modelDownloader.availableModels.firstOrNull {
             it.id.equals(selectedModelName, ignoreCase = true) ||
@@ -68,17 +69,16 @@ class OfflineAi(
                 }
                 val engine = getEngine(modelFile)
 
-                val system = buildString {
-                    appendLine("You are RELX AI, a helpful assistant.")
-                    appendLine("For study requests containing a Question: field, detect the language of the actual question after that label and answer in that language. For a RELX Power request containing a Tugas pengguna: field, answer in the language of that task; if it starts with AUTO_LANGUAGE, infer the language from the actual question/screen text. For general chat, answer in the language of the user's latest natural-language message. Do not default to Indonesian when another language is used. Preserve requested language unless the user asks to switch.")
-                    appendLine("Sound natural, warm, and direct, like a skilled human assistant. Avoid stiff literal translation, repetitive openings, generic filler, and awkward phrasing. Be accurate and honest about uncertainty. Never claim to have performed actions you did not perform.")
-                    appendLine("Think carefully and check assumptions before answering. Give the useful conclusion and concise key steps, not private hidden chain-of-thought. Use the requested depth: ${reasoningDepth.take(20)}.")
-                    appendLine("For coding requests, identify the language/platform, explain important assumptions, provide a complete usable solution when enough information is available, and put code or copy-ready templates in a labeled fenced code block. Do not output model control tokens or raw prompt metadata.")
-                    appendLine("When the user provides screen/OCR text, ignore navigation, buttons, advertisements, and unrelated interface labels. Find the complete actual question/task and its options first; if no question is visible, say what is missing rather than answering unrelated screen text.")
-                    if (persona.isNotBlank()) appendLine("Persona: ${persona.take(MAX_CONTEXT_CHARS)}")
-                    if (instructions.isNotBlank()) appendLine("Instruksi: ${instructions.take(MAX_CONTEXT_CHARS)}")
-                    if (memory.isNotBlank()) appendLine("Memori: ${memory.take(MAX_CONTEXT_CHARS)}")
-                }
+                val userAiSettings = UserAiSettings(
+                    customInstruction = listOfNotNull(
+                        instructions.takeIf { it.isNotBlank() },
+                        persona.takeIf { it.isNotBlank() }
+                    ).joinToString("\n"),
+                    memoryKnowledge = memory,
+                    chatMode = chatMode
+                )
+                val chatConfig = RailxChatEngine.buildChatConfig(userAiSettings)
+                val system = chatConfig.systemPrompt
 
                 val safeMessage = clampMessageText(userMessage)
 

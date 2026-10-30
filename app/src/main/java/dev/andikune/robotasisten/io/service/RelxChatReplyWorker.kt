@@ -27,7 +27,8 @@ class RelxChatReplyWorker(
                     persona = request.persona,
                     memory = request.memory,
                     instructions = request.instructions,
-                    reasoningDepth = request.reasoningDepth
+                    reasoningDepth = request.reasoningDepth,
+                    chatMode = request.chatMode
                 )
             } catch (t: Throwable) {
                 LogHelper.e("RelxChatReplyWorker", "Error generating AI response", t)

@@ -64,6 +64,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import dev.andikune.robotasisten.io.data.ai.RailxChatMode
 import dev.andikune.robotasisten.io.data.ai.RelxChatMessage
 import dev.andikune.robotasisten.io.data.ai.RelxChatProfile
 import dev.andikune.robotasisten.io.data.ai.RelxChatStore
@@ -151,7 +152,8 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
             persona = requestProfile.persona,
             memory = requestProfile.memory,
             instructions = requestProfile.instructions,
-            reasoningDepth = requestProfile.reasoningDepth
+            reasoningDepth = requestProfile.reasoningDepth,
+            chatMode = requestProfile.chatMode
         )
         store.savePendingRequest(request)
         RelxChatReplyHelper.enqueue(context, request)
@@ -216,7 +218,25 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("RELX AI", fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("RELX AI", fontWeight = FontWeight.Bold)
+                            val (badgeText, badgeBg) = when (profile.chatMode) {
+                                RailxChatMode.FAST -> "FAST ⚡" to MaterialTheme.colorScheme.tertiaryContainer
+                                RailxChatMode.SEDANG -> "SEDANG ⚖️" to MaterialTheme.colorScheme.primaryContainer
+                                RailxChatMode.PRO -> "PRO 🧠" to MaterialTheme.colorScheme.secondaryContainer
+                            }
+                            Surface(
+                                color = badgeBg,
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = badgeText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         Text(modeLabel, style = MaterialTheme.typography.labelSmall)
                     }
                 },
@@ -465,19 +485,115 @@ private fun ChatProfileDialog(initial: RelxChatProfile, onDismiss: () -> Unit, o
     var memory by remember(initial) { mutableStateOf(initial.memory) }
     var instructions by remember(initial) { mutableStateOf(initial.instructions) }
     var reasoningDepth by remember(initial) { mutableStateOf(initial.reasoningDepth) }
+    var chatMode by remember(initial) { mutableStateOf(initial.chatMode) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Persona, Memory & Instruction") },
+        title = { Text("Pengaturan RAILX AI Engine", fontWeight = FontWeight.Bold) },
         text = {
             Column(
-                modifier = Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .heightIn(max = 480.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("Riwayat chat dan konteks tersimpan di penyimpanan privat. Konteks dikirim ke provider AI aktif; jangan masukkan password, API key, atau informasi sensitif.", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(persona, { persona = it }, label = { Text("Persona / gaya") }, minLines = 2, maxLines = 3)
-                OutlinedTextField(memory, { memory = it }, label = { Text("Memory / knowledge") }, minLines = 3, maxLines = 5)
-                OutlinedTextField(instructions, { instructions = it }, label = { Text("Instruction / preferensi") }, minLines = 2, maxLines = 4)
-                Text("Kedalaman jawaban", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "Mode Obrolan & Densitas Respons",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    RailxChatMode.values().forEach { mode ->
+                        val isSelected = chatMode == mode
+                        val (label, icon) = when (mode) {
+                            RailxChatMode.FAST -> "FAST" to "⚡"
+                            RailxChatMode.SEDANG -> "SEDANG" to "⚖️"
+                            RailxChatMode.PRO -> "PRO" to "🧠"
+                        }
+                        OutlinedButton(
+                            onClick = { chatMode = mode },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = if (isSelected) androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            ) else androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
+                        ) {
+                            Text(
+                                text = "$icon $label",
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val desc = when (chatMode) {
+                        RailxChatMode.FAST -> "⚡ FAST: Respons kilat & to-the-point (max 250 token, temp 0.3). Cocok untuk tanya cepat, konfirmasi, atau sintaks ringkas (maks 2-3 kalimat)."
+                        RailxChatMode.SEDANG -> "⚖️ SEDANG (Default): Respons standar & terstruktur (max 750 token, temp 0.65). Keseimbangan antara kelugasan dan kelengkapan berformat rapi."
+                        RailxChatMode.PRO -> "🧠 PRO: Analisis mendalam & komprehensif (max 2048 token, temp 0.75). Bedah konsep rumit, arsitektur/coding, logika, contoh konkret, dan kesimpulan."
+                    }
+                    Text(
+                        text = desc,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(2.dp))
+
+                Text(
+                    "Basis Memori & Pengetahuan Permanen",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                OutlinedTextField(
+                    value = memory,
+                    onValueChange = { memory = it },
+                    label = { Text("Memory Knowledge") },
+                    placeholder = { Text("Fakta penting pengguna, preferensi, atau konteks permanen yang selalu diingat AI...") },
+                    minLines = 3,
+                    maxLines = 6,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    "Persona & Instruksi Khusus Pengguna",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                OutlinedTextField(
+                    value = instructions,
+                    onValueChange = { instructions = it },
+                    label = { Text("Instruction Response") },
+                    placeholder = { Text("Aturan gaya bahasa, format khusus, batasan kalimat, atau persona khusus...") },
+                    minLines = 2,
+                    maxLines = 5,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("Gaya Bahasa Tambahan (Opsional)", style = MaterialTheme.typography.labelMedium)
+                OutlinedTextField(
+                    value = persona,
+                    onValueChange = { persona = it },
+                    label = { Text("Persona / Gaya") },
+                    placeholder = { Text("cth: Santai, ramah, mentor senior...") },
+                    minLines = 1,
+                    maxLines = 2,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("Kedalaman Penalaran", style = MaterialTheme.typography.labelMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("brief" to "Ringkas", "balanced" to "Seimbang", "deep" to "Mendalam").forEach { (value, label) ->
                         OutlinedButton(onClick = { reasoningDepth = value }) {
@@ -485,11 +601,20 @@ private fun ChatProfileDialog(initial: RelxChatProfile, onDismiss: () -> Unit, o
                         }
                     }
                 }
-                Text("Mendalam meminta AI memeriksa asumsi dan menyajikan langkah inti, bukan membuka chain-of-thought privat. Kualitas tetap bergantung pada model aktif.", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(RelxChatProfile(persona.trim(), memory.trim(), instructions.trim(), reasoningDepth)) }) { Text("Simpan") }
+            Button(onClick = {
+                onSave(
+                    RelxChatProfile(
+                        persona = persona.trim(),
+                        memory = memory.trim(),
+                        instructions = instructions.trim(),
+                        reasoningDepth = reasoningDepth,
+                        chatMode = chatMode
+                    )
+                )
+            }) { Text("Simpan") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } }
     )

@@ -209,7 +209,8 @@ class CloudAi(
         persona: String = "",
         memory: String = "",
         instructions: String = "",
-        reasoningDepth: String = "balanced"
+        reasoningDepth: String = "balanced",
+        chatMode: RailxChatMode = RailxChatMode.SEDANG
     ): String? {
         if (!rateLimiter.canProceed()) {
             LogHelper.w("CloudAi", "Rate limit exceeded, delaying queryConversation")
@@ -229,25 +230,59 @@ class CloudAi(
                     LogHelper.w("CloudAi", "Provider '$providerName' tidak ditemukan atau tidak didukung.")
                     return@withContext "Provider AI '$providerName' tidak didukung."
                 }
-                val systemPrompt = buildString {
-                    if (persona.isNotBlank()) appendLine(persona.take(1000))
-                    if (memory.isNotBlank()) appendLine("Konteks/Memori: ${memory.take(1000)}")
-                    if (instructions.isNotBlank()) appendLine("Instruksi: ${instructions.take(1000)}")
-                    if (isEmpty()) append("You are an expert study assistant. Answer clearly, accurately, and concisely in Indonesian.")
-                }.trim()
+
+                // Compose system prompt & hyperparameters via RailxChatEngine
+                val userAiSettings = UserAiSettings(
+                    customInstruction = listOfNotNull(
+                        instructions.takeIf { it.isNotBlank() },
+                        persona.takeIf { it.isNotBlank() }
+                    ).joinToString("\n"),
+                    memoryKnowledge = memory,
+                    chatMode = chatMode
+                )
+                val chatConfig = RailxChatEngine.buildChatConfig(userAiSettings)
+                val systemPrompt = chatConfig.systemPrompt
 
                 val safeMessage = preparePromptText(userMessage)
 
                 val result = RetryHelper.retryWithBackoff(times = 2, initialDelayMs = 1500) {
                     when {
                         isGemini(provider) && customBaseUrl.isNullOrBlank() -> {
-                            queryGeminiConversation(apiKey, modelName, systemPrompt, history, safeMessage)
+                            queryGeminiConversation(
+                                apiKey = apiKey,
+                                modelName = modelName,
+                                systemPrompt = systemPrompt,
+                                history = history,
+                                userMessage = safeMessage,
+                                maxTokens = chatConfig.maxTokens,
+                                temperature = chatConfig.temperature,
+                                topP = chatConfig.topP
+                            )
                         }
                         isClaude(provider) && customBaseUrl.isNullOrBlank() -> {
-                            queryClaudeConversation(apiKey, modelName, systemPrompt, history, safeMessage)
+                            queryClaudeConversation(
+                                apiKey = apiKey,
+                                modelName = modelName,
+                                systemPrompt = systemPrompt,
+                                history = history,
+                                userMessage = safeMessage,
+                                maxTokens = chatConfig.maxTokens,
+                                temperature = chatConfig.temperature
+                            )
                         }
                         else -> {
-                            queryOpenAiConversation(provider, apiKey, modelName, customBaseUrl, systemPrompt, history, safeMessage)
+                            queryOpenAiConversation(
+                                provider = provider,
+                                apiKey = apiKey,
+                                modelName = modelName,
+                                customBaseUrl = customBaseUrl,
+                                systemPrompt = systemPrompt,
+                                history = history,
+                                userMessage = safeMessage,
+                                maxTokens = chatConfig.maxTokens,
+                                temperature = chatConfig.temperature,
+                                topP = chatConfig.topP
+                            )
                         }
                     }
                 }
@@ -319,7 +354,10 @@ class CloudAi(
         modelName: String,
         systemPrompt: String,
         history: List<Pair<String, String>>,
-        userMessage: String
+        userMessage: String,
+        maxTokens: Int = 800,
+        temperature: Float = 0.65f,
+        topP: Float = 0.90f
     ): String? {
         val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=$apiKey"
         val contentsArray = JSONArray()
@@ -357,8 +395,9 @@ class CloudAi(
         val payload = JSONObject().apply {
             put("contents", contentsArray)
             put("generationConfig", JSONObject().apply {
-                put("temperature", 0.3)
-                put("maxOutputTokens", 800)
+                put("temperature", temperature)
+                put("topP", topP)
+                put("maxOutputTokens", maxTokens)
             })
         }
 
@@ -427,7 +466,9 @@ class CloudAi(
         modelName: String,
         systemPrompt: String,
         history: List<Pair<String, String>>,
-        userMessage: String
+        userMessage: String,
+        maxTokens: Int = 800,
+        temperature: Float = 0.65f
     ): String? {
         val endpoint = "https://api.anthropic.com/v1/messages"
         val messagesArray = JSONArray()
@@ -451,7 +492,8 @@ class CloudAi(
 
         val payload = JSONObject().apply {
             put("model", modelName)
-            put("max_tokens", 800)
+            put("max_tokens", maxTokens)
+            put("temperature", temperature)
             put("system", systemPrompt)
             put("messages", messagesArray)
         }
@@ -538,7 +580,10 @@ class CloudAi(
         customBaseUrl: String?,
         systemPrompt: String,
         history: List<Pair<String, String>>,
-        userMessage: String
+        userMessage: String,
+        maxTokens: Int = 800,
+        temperature: Float = 0.65f,
+        topP: Float = 0.90f
     ): String? {
         val base = if (!customBaseUrl.isNullOrBlank()) customBaseUrl.trimEnd('/') else provider.baseUrl.trimEnd('/')
         val endpoint = "$base/chat/completions"
@@ -568,8 +613,9 @@ class CloudAi(
         val payload = JSONObject().apply {
             put("model", modelName)
             put("messages", messagesArray)
-            put("temperature", 0.3)
-            put("max_tokens", 800)
+            put("temperature", temperature)
+            put("top_p", topP)
+            put("max_tokens", maxTokens)
         }
 
         val body = payload.toString().toRequestBody("application/json".toMediaType())

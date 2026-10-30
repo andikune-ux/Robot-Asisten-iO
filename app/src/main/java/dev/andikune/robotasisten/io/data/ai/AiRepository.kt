@@ -34,7 +34,8 @@ class AiRepository(
         persona: String,
         memory: String,
         instructions: String,
-        reasoningDepth: String = "balanced"
+        reasoningDepth: String = "balanced",
+        chatMode: RailxChatMode = RailxChatMode.SEDANG
     ): String? = when (mode.trim().uppercase()) {
         "AI_OFFLINE", "OFFLINE" -> offlineAi.generateChatReply(
             selectedModelName = settingsRepository.selectedOfflineModel.value,
@@ -43,7 +44,8 @@ class AiRepository(
             persona = persona,
             memory = memory,
             instructions = instructions,
-            reasoningDepth = reasoningDepth
+            reasoningDepth = reasoningDepth,
+            chatMode = chatMode
         )
         "AI_OPEN_KEY", "CLOUD" -> cloudAi.queryConversation(
             history = history,
@@ -54,7 +56,8 @@ class AiRepository(
             persona = persona,
             memory = memory,
             instructions = instructions,
-            reasoningDepth = reasoningDepth
+            reasoningDepth = reasoningDepth,
+            chatMode = chatMode
         )
         else -> null
     }

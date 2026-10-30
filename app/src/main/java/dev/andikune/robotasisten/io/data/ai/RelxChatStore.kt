@@ -23,7 +23,8 @@ data class RelxChatProfile(
     val persona: String,
     val memory: String,
     val instructions: String,
-    val reasoningDepth: String = "balanced"
+    val reasoningDepth: String = "balanced",
+    val chatMode: RailxChatMode = RailxChatMode.SEDANG
 )
 
 data class RelxPendingChatRequest(
@@ -35,19 +36,25 @@ data class RelxPendingChatRequest(
     val persona: String,
     val memory: String,
     val instructions: String,
-    val reasoningDepth: String
+    val reasoningDepth: String,
+    val chatMode: RailxChatMode = RailxChatMode.SEDANG
 )
 
 /** Local-only chat history and profile settings. Never included in project documentation export. */
 class RelxChatStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("relx_ai_chat", Context.MODE_PRIVATE)
 
-    fun profile() = RelxChatProfile(
-        persona = prefs.getString(KEY_PERSONA, DEFAULT_PERSONA).orEmpty(),
-        memory = prefs.getString(KEY_MEMORY, "").orEmpty(),
-        instructions = prefs.getString(KEY_INSTRUCTIONS, "").orEmpty(),
-        reasoningDepth = prefs.getString(KEY_REASONING_DEPTH, "balanced").orEmpty().ifBlank { "balanced" }
-    )
+    fun profile(): RelxChatProfile {
+        val storedModeName = prefs.getString(KEY_CHAT_MODE, RailxChatMode.SEDANG.name).orEmpty()
+        val parsedMode = runCatching { RailxChatMode.valueOf(storedModeName) }.getOrDefault(RailxChatMode.SEDANG)
+        return RelxChatProfile(
+            persona = prefs.getString(KEY_PERSONA, DEFAULT_PERSONA).orEmpty(),
+            memory = prefs.getString(KEY_MEMORY, "").orEmpty(),
+            instructions = prefs.getString(KEY_INSTRUCTIONS, "").orEmpty(),
+            reasoningDepth = prefs.getString(KEY_REASONING_DEPTH, "balanced").orEmpty().ifBlank { "balanced" },
+            chatMode = parsedMode
+        )
+    }
 
     fun saveProfile(profile: RelxChatProfile) {
         prefs.edit()
@@ -55,6 +62,7 @@ class RelxChatStore(context: Context) {
             .putString(KEY_MEMORY, profile.memory.take(MAX_PROFILE_CHARS))
             .putString(KEY_INSTRUCTIONS, profile.instructions.take(MAX_PROFILE_CHARS))
             .putString(KEY_REASONING_DEPTH, profile.reasoningDepth.take(20))
+            .putString(KEY_CHAT_MODE, profile.chatMode.name)
             .apply()
     }
 
@@ -117,6 +125,7 @@ class RelxChatStore(context: Context) {
             put("memory", request.memory)
             put("instructions", request.instructions)
             put("reasoningDepth", request.reasoningDepth)
+            put("chatMode", request.chatMode.name)
             put("history", JSONArray().apply {
                 request.history.forEach { (role, content) ->
                     put(JSONObject().put("role", role).put("content", content))
@@ -133,6 +142,8 @@ class RelxChatStore(context: Context) {
         val history = (0 until historyJson.length()).mapNotNull { index ->
             historyJson.optJSONObject(index)?.let { it.optString("role") to it.optString("content") }
         }
+        val storedChatModeName = json.optString("chatMode", RailxChatMode.SEDANG.name)
+        val parsedChatMode = runCatching { RailxChatMode.valueOf(storedChatModeName) }.getOrDefault(RailxChatMode.SEDANG)
         RelxPendingChatRequest(
             conversationId = json.getString("conversationId"),
             mode = json.getString("mode"),
@@ -142,7 +153,8 @@ class RelxChatStore(context: Context) {
             persona = json.optString("persona"),
             memory = json.optString("memory"),
             instructions = json.optString("instructions"),
-            reasoningDepth = json.optString("reasoningDepth", "balanced")
+            reasoningDepth = json.optString("reasoningDepth", "balanced"),
+            chatMode = parsedChatMode
         )
     }.getOrNull()
 
@@ -211,6 +223,7 @@ class RelxChatStore(context: Context) {
         private const val KEY_MEMORY = "memory"
         private const val KEY_INSTRUCTIONS = "instructions"
         private const val KEY_REASONING_DEPTH = "reasoning_depth"
+        private const val KEY_CHAT_MODE = "chat_mode"
         private const val KEY_CURRENT_ID = "current_conversation_id"
         private const val KEY_CONVERSATIONS = "conversations"
         private const val KEY_PENDING_REQUEST = "pending_chat_request"
