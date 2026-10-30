@@ -67,7 +67,7 @@ class OfflineAi(
                 if (!modelFile.exists() || modelFile.length() != modelSpec.sizeBytes) {
                     return@withLock "File model tidak lengkap di penyimpanan perangkat. Silakan buka halaman Mode AI Offline untuk mengunduh ulang model."
                 }
-                val engine = getEngine(modelFile)
+                val engine = getEngine(modelFile, chatMode)
 
                 val userAiSettings = UserAiSettings(
                     customInstruction = listOfNotNull(
@@ -134,8 +134,11 @@ class OfflineAi(
         return "$head\n[...]\n$tail"
     }
 
-    private fun getEngine(file: File): LlmInference {
+    private fun getEngine(file: File, chatMode: RailxChatMode = RailxChatMode.SEDANG): LlmInference {
         val path = file.absolutePath
+        val localEngine = LocalAIEngine(context)
+        val config = localEngine.initInferenceParams(chatMode)
+
         cachedEngine?.let {
             if (cachedModelPath == path) return it
         }
@@ -145,8 +148,8 @@ class OfflineAi(
 
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(path)
-            .setMaxTokens(MAX_GENERATED_TOKENS)
-            .setMaxTopK(40)
+            .setMaxTokens(config.maxTokens)
+            .setMaxTopK(config.maxTopK)
             .build()
 
         return LlmInference.createFromOptions(context.applicationContext, options).also {
