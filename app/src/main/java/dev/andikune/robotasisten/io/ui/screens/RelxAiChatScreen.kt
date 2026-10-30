@@ -464,10 +464,10 @@ private fun ChatMessageBubble(
             horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
             verticalAlignment = Alignment.Top
         ) {
-            // 1. AVATAR RAILX AI (ICON LAUNCHER APP)
+            // 1. AVATAR RAILX AI (ICON LAUNCHER ART)
             if (!isUser) {
                 Image(
-                    painter = painterResource(id = R.mipmap.ic_launcher),
+                    painter = painterResource(id = R.drawable.ic_launcher_art),
                     contentDescription = "RAILX AI Icon",
                     modifier = Modifier
                         .size(32.dp)
