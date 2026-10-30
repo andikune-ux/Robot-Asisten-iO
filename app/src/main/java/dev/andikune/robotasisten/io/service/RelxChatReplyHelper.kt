@@ -39,4 +39,8 @@ object RelxChatReplyHelper {
         WorkManager.getInstance(context.applicationContext)
             .getWorkInfosForUniqueWorkFlow(UNIQUE_WORK)
             .map { it.firstOrNull() }
+
+    fun cancel(context: Context) {
+        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(UNIQUE_WORK)
+    }
 }

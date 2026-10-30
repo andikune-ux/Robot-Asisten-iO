@@ -116,6 +116,26 @@ class RelxChatStore(context: Context) {
         }
     }
 
+    fun deleteSingleMessage(conversationId: String, messageId: String): List<RelxChatMessage> {
+        val existing = decodeConversations().toMutableList()
+        val index = existing.indexOfFirst { it.id == conversationId }
+        if (index < 0) return emptyList()
+        val currentConv = existing[index]
+        val filtered = currentConv.messages.filterNot { it.id == messageId }
+        val updated = currentConv.copy(
+            messages = filtered,
+            updatedAt = System.currentTimeMillis()
+        )
+        existing[index] = updated
+        persist(existing)
+        return filtered
+    }
+
+    fun deleteAllConversations() {
+        persist(emptyList())
+        prefs.edit().remove(KEY_CURRENT_ID).remove(KEY_PENDING_REQUEST).apply()
+    }
+
     fun savePendingRequest(request: RelxPendingChatRequest) {
         val json = JSONObject().apply {
             put("conversationId", request.conversationId)

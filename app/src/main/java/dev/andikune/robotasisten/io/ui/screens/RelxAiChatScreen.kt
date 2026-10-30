@@ -7,7 +7,9 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +18,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -25,6 +31,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -33,8 +41,13 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import dev.andikune.robotasisten.io.R
+import dev.andikune.robotasisten.io.ui.chat.components.BottomInputWithCurtainMode
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -296,7 +309,10 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
                             showEditMessage = true
                         },
                         onRegenerate = { regenerateFrom(message.id) },
-                        onCopySnippet = { copyText(context, it) }
+                        onCopySnippet = { copyText(context, it) },
+                        onDelete = {
+                            messages = store.deleteSingleMessage(conversation.id, message.id)
+                        }
                     )
                 }
                 if (busy) item(key = "thinking") {
@@ -322,27 +338,28 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ketik pesan…") },
-                    maxLines = 5,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { sendMessage() })
-                )
-                IconButton(onClick = { attachmentPicker.launch(arrayOf("*/*")) }, enabled = !busy) {
-                    Icon(Icons.Default.AttachFile, contentDescription = "Tambah foto, video, atau dokumen")
+            BottomInputWithCurtainMode(
+                currentMode = profile.chatMode,
+                isGenerating = busy,
+                inputText = draft,
+                attachments = selectedAttachments,
+                onModeChanged = { newMode ->
+                    profile = profile.copy(chatMode = newMode)
+                    store.saveProfile(profile)
+                },
+                onTextChange = { draft = it },
+                onSendClick = { sendMessage() },
+                onStopClick = {
+                    RelxChatReplyHelper.cancel(context)
+                    store.clearPendingRequest()
+                    busy = false
+                    Toast.makeText(context, "Respon dihentikan oleh pengguna", Toast.LENGTH_SHORT).show()
+                },
+                onUploadClick = { attachmentPicker.launch(arrayOf("*/*")) },
+                onRemoveAttachment = { uri ->
+                    selectedAttachments = selectedAttachments.filterNot { it == uri }
                 }
-                IconButton(onClick = { sendMessage() }, enabled = draft.isNotBlank() && !busy) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Kirim pesan", tint = MaterialTheme.colorScheme.primary)
-                }
-            }
+            )
         }
     }
 
@@ -379,7 +396,25 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
         val conversations = remember(showHistory, historyRevision) { store.conversations() }
         AlertDialog(
             onDismissRequest = { showHistory = false },
-            title = { Text("Riwayat RELX AI") },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Riwayat RELX AI")
+                    if (conversations.isNotEmpty()) {
+                        TextButton(onClick = {
+                            store.deleteAllConversations()
+                            newConversation()
+                            historyRevision++
+                            showHistory = false
+                        }) {
+                            Text("Reset Total", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            },
             text = {
                 if (conversations.isEmpty()) Text("Belum ada percakapan.")
                 else LazyColumn {
@@ -399,7 +434,7 @@ fun RelxAiChatScreen(onNavigateBack: () -> Unit) {
                                 store.deleteConversation(item.id)
                                 if (conversation.id == item.id) newConversation()
                                 historyRevision++
-                            }) { Icon(Icons.Default.Delete, contentDescription = "Hapus percakapan") }
+                            }) { Icon(Icons.Default.Delete, contentDescription = "Hapus percakapan", tint = MaterialTheme.colorScheme.error) }
                         }
                     }
                 }
@@ -415,24 +450,123 @@ private fun ChatMessageBubble(
     busy: Boolean,
     onEdit: () -> Unit,
     onRegenerate: () -> Unit,
-    onCopySnippet: (String) -> Unit
+    onCopySnippet: (String) -> Unit,
+    onDelete: () -> Unit
 ) {
     val isUser = message.role == RelxChatStore.ROLE_USER
-    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
-        Surface(
-            color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth(if (isUser) 0.9f else 1f)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+            verticalAlignment = Alignment.Top
         ) {
-            Column(Modifier.padding(12.dp)) {
-                Text(if (isUser) "Anda" else "RELX AI", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                if (isUser) SelectionContainer { Text(message.content, style = MaterialTheme.typography.bodyMedium) }
-                else AssistantMessageContent(message.content, onCopySnippet)
-                if (isUser) TextButton(onClick = onEdit, enabled = !busy) { Text("Edit & kirim ulang") }
-                else TextButton(onClick = onRegenerate, enabled = !busy) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
-                    Text("Balas ulang")
+            // 1. AVATAR RAILX AI (ICON LAUNCHER APP)
+            if (!isUser) {
+                Image(
+                    painter = painterResource(id = R.mipmap.ic_launcher),
+                    contentDescription = "RAILX AI Icon",
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+
+            // 2. BUBBLE TEXT & ACTION FOOTER
+            Column(
+                horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+                modifier = Modifier.widthIn(max = 300.dp)
+            ) {
+                Surface(
+                    color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(
+                        topStart = 16.dp,
+                        topEnd = 16.dp,
+                        bottomStart = if (isUser) 16.dp else 4.dp,
+                        bottomEnd = if (isUser) 4.dp else 16.dp
+                    )
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(
+                            text = if (isUser) "Anda" else "RELX AI",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        if (isUser) {
+                            SelectionContainer {
+                                Text(
+                                    message.content,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        } else {
+                            AssistantMessageContent(message.content, onCopySnippet)
+                        }
+                    }
+                }
+
+                // Action Footer
+                Row(
+                    modifier = Modifier.padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    TextButton(
+                        onClick = { onCopySnippet(message.content) },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                    ) {
+                        Text("📋 Salin", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (isUser) {
+                        TextButton(
+                            onClick = onEdit,
+                            enabled = !busy,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Text("✏️ Edit", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else {
+                        TextButton(
+                            onClick = onRegenerate,
+                            enabled = !busy,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Text("🔄 Regenerate", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    TextButton(
+                        onClick = onDelete,
+                        enabled = !busy,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                    ) {
+                        Text("🗑️ Hapus", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            // 3. AVATAR PENGGUNA (ICON PROFIL ORANG)
+            if (isUser) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "User Profile Icon",
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
